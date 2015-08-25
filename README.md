@@ -29,6 +29,7 @@ $ rosservice call /planning_server/plan "pattern: 'fetch ?object from ?location'
     value: 'tomato' \
   - key: '?location' \
     value: 'fridge'"
+```
 
 
 What it does
