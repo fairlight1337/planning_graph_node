@@ -5,7 +5,7 @@
 #  * Software License Agreement (BSD License)
 #  *
 #  *  Copyright (c) 2013, Institute for Artificial Intelligence,
-#  *  Universität Bremen.
+#  *  Universitaet Bremen.
 #  *  All rights reserved.
 #  *
 #  *  Redistribution and use in source and binary forms, with or without
@@ -19,7 +19,7 @@
 #  *     disclaimer in the documentation and/or other materials provided
 #  *     with the distribution.
 #  *   * Neither the name of the Institute for Artificial Intelligence,
-#  *     Universität Bremen, nor the names of its contributors may be
+#  *     Universitaet Bremen, nor the names of its contributors may be
 #  *     used to endorse or promote products derived from this software
 #  *     without specific prior written permission.
 #  *
