@@ -36,6 +36,7 @@
 
 
 import os
+import sys
 import json
 import rospy
 
@@ -55,8 +56,14 @@ def process_loadable_dataset(dataset):
         for invocation in step["invocations"]:
             invocation_processed = {}
             
-            for parameter in invocation:
-                invocation_processed[param_exp_to_prolog(parameter)] = invocation[parameter]
+            for node_uid in invocation:
+                parameters = invocation[node_uid]
+                node_call_processed = {}
+                
+                for parameter in parameters:
+                    node_call_processed[param_exp_to_prolog(parameter)] = parameters[parameter]
+                
+                invocation_processed[node_uid] = node_call_processed
             
             invocations_processed.append(invocation_processed)
         
@@ -68,7 +75,8 @@ def process_loadable_dataset(dataset):
         
         steps.append({"name": (step["node"][21:] if step["node"][:21] == "REPLACEABLE-FUNCTION-" else step["node"]).lower(),
                       "invocations": invocations_processed,
-                      "call-pattern": call_pattern})
+                      "call-pattern": call_pattern,
+                      "uid": step["uid"]})
     
     return steps
 
@@ -80,9 +88,9 @@ def load_data():
     filenames = ["deduced_experiences.json"]
     
     if len(filenames) > 0:
-        print "Loading plan data:"
+        print "[ :| ] Loading plan data:"
         for filename in filenames:
-            print " - " + filename
+            print "[ :) ]  - " + filename
         
         with open(global_dir + "/" + filename, "r") as f:
             datasets = json.load(f)
@@ -90,7 +98,7 @@ def load_data():
             for dataset in datasets:
                 loaded_datasets.append(process_loadable_dataset(dataset))
     else:
-        print "No plan data defined. Is this what you intended?"
+        print "[ :( ] No plan data defined. Is this what you intended?"
 
 
 def resolve_pattern(pattern, bindings):
@@ -150,7 +158,6 @@ def unify_bindings(bindings):
     dic_bindings = {}
     
     for binding in bindings:
-        print binding
         if not binding.key in dic_bindings:
             dic_bindings[binding.key] = []
         
@@ -184,6 +191,74 @@ def param_prolog_to_exp(param):
     return param[1:].upper()
 
 
+def expandCPD(dataset, configuration):
+    fitting_datasets = []
+    
+    index = {}
+    for parameter in configuration:
+        index[parameter] = 0
+    
+    run_loop = True
+    while run_loop:
+        current_configuration = {}
+        
+        for parameter in configuration:
+            current_configuration[parameter] = configuration[parameter][index[parameter]]
+        
+        # do
+        steps = []
+        all_steps_fit = True
+        step0uid = dataset[0]["uid"]
+        
+        for step in dataset:
+            step_invocable = False
+            
+            for invocation in step["invocations"]:
+                invocation0 = invocation[str(step0uid)]
+                
+                all_fit = True
+                for parameter in invocation0:
+                    if not invocation0[parameter] == current_configuration[parameter]:
+                        all_fit = False
+                
+                if all_fit:
+                    step_invocable = True
+            
+            if step_invocable:
+                step_copied = step.copy()
+                step_copied["invocations"] = [current_configuration]
+                steps.append(step_copied)
+            else:
+                all_steps_fit = False
+        
+        if all_steps_fit:
+            print "[ :D ] OK, got", len(steps), "steps with", current_configuration
+            fitting_datasets.append(steps)
+        
+        index[configuration.keys()[0]] = index[configuration.keys()[0]] + 1
+        for i in range(len(configuration)):
+            parameter = configuration.keys()[i]
+            
+            if index[parameter] >= len(configuration[parameter]):
+                if i == len(configuration) - 1:
+                    run_loop = False
+                    break
+                else:
+                    index[parameter] = 0
+                    index[configuration.keys()[i + 1]] = index[configuration.keys()[i + 1]] + 1
+    
+    return fitting_datasets
+
+
+def expandCPDs(datasets, configuration):
+    cpds = []
+    
+    for dataset in datasets:
+        cpds += expandCPD(dataset, configuration)
+    
+    return cpds
+
+
 def evaluate_resolved_pattern(pattern, configuration):
     global loaded_datasets
     
@@ -196,7 +271,7 @@ def evaluate_resolved_pattern(pattern, configuration):
             if dataset[0]["name"] == pattern_split[0] and len(dataset[0]["call-pattern"]) == len(pattern_split) - 1:
                 datasets.append(dataset)
     
-    print len(datasets), "fitting datasets found"
+    print "[ :| ]", len(datasets), "structurally fitting datasets found"
     
     unbound_parameters = []
     for parameter in pattern_split[1:]:
@@ -205,61 +280,57 @@ def evaluate_resolved_pattern(pattern, configuration):
             configuration[parameter] = []
     
     for dataset in datasets:
-        for unbound_parameter in unbound_parameters:
-            for invocation in dataset[0]["invocations"]:
-                if unbound_parameter in invocation:
-                    if not invocation[unbound_parameter] in configuration[unbound_parameter]:
-                        configuration[unbound_parameter].append(invocation[unbound_parameter])
-    
-    print "Configuration space:", configuration
-    
-    # Iterate through all fitting datasets
-    #print datasets
-    for dataset in datasets:
-        for invocation in dataset[0]["invocations"]:
-            all_fit = True
+        step0 = dataset[0]
+        
+        for invocation in step0["invocations"]:
+            uid_based_invocation = invocation[str(dataset[0]["uid"])]
             
-            for parameter in invocation:
-                if not invocation[parameter] in configuration[parameter]:
-                    all_fit = False
-                    break
+            for parameter in uid_based_invocation:
+                if parameter in unbound_parameters:
+                    if not uid_based_invocation[parameter] in configuration[parameter]:
+                        configuration[parameter].append(uid_based_invocation[parameter])
+    
+    print "[ :) ] Parameter configuration space:"
+    for parameter in configuration:
+        values = ""
+        
+        for value in configuration[parameter]:
+            values = values + (" | " if not values == "" else "") + "\"" + value + "\""
+        
+        print "[ :) ]  - " + parameter + " = " + values
+    
+    correctly_parameterized_datasets = expandCPDs(datasets, configuration)
+    
+    len_cpd = len(correctly_parameterized_datasets)
+    print "[ :) ]", len_cpd, "dataset" + ("s" if len_cpd != 1 else ""), "fit" + ("s" if len_cpd == 1 else ""), "the bindings supplied"
+    
+    sys.stdout.write('[ :| ] Constructing the corresponding step-by-step plans...')
+    
+    returned_plans = []
+    for dataset in correctly_parameterized_datasets:
+        plan = Plan()
+        
+        for step in dataset:
+            planstep = Step()
             
-            if all_fit == True:
-                pass#print "Fits:", invocation
+            planstep.type = "cram_function"
+            planstep.pattern = step["name"]
+            
+            for parameter in step["invocations"][0]:
+                bdg = Binding()
+                bdg.type = 0
+                bdg.key = parameter
+                bdg.value = step["invocations"][0][parameter]
+                
+                planstep.bindings.append(bdg)
+            
+            plan.steps.append(planstep)
+        
+        returned_plans.append(plan)
     
-    return Plan()
+    print "[ :) ] done."
     
-    # if not "?location" in configuration:
-    #     configuration["?location"] = "fridge"
-    
-    # if not "?object" in configuration:
-    #     configuration["?object"] = "cheese"
-    
-    # if pattern == "fetch ?object from ?location":
-    #     plan = Plan()
-        
-    #     step_find = make_step("achieve", "find-object ?object")
-    #     step_find.bindings.append(make_binding("?object", configuration["?object"]))
-    #     plan.steps.append(step_find)
-        
-    #     step_find = make_step("achieve", "navigate")
-    #     plan.steps.append(step_find)
-        
-    #     if configuration["?location"] != "table":
-    #         step_find = make_step("achieve", "open-location ?location")
-    #         step_find.bindings.append(make_binding("?location", configuration["?location"]))
-    #         plan.steps.append(step_find)
-        
-    #     step_find = make_step("achieve", "pick-object ?object")
-    #     step_find.bindings.append(make_binding("?object", configuration["?object"]))
-    #     plan.steps.append(step_find)
-        
-    #     if configuration["?location"] != "table":
-    #         step_find = make_step("achieve", "close-location ?location")
-    #         step_find.bindings.append(make_binding("?location", configuration["?location"]))
-    #         plan.steps.append(step_find)
-        
-    #     return plan
+    return returned_plans
 
 
 def plan_replies(pattern, bindings):
@@ -267,26 +338,25 @@ def plan_replies(pattern, bindings):
     
     bindings = unify_bindings(bindings)
     (configurations, unused_bindings) = resolve_patterns(pattern, bindings)
-    print configurations
     res.unused_bindings = unused_bindings
     
     for configuration in configurations:
-        plan = evaluate_resolved_pattern(pattern, configuration)
-        
-        if plan:
-            res.plans.append(plan)
+        plans = evaluate_resolved_pattern(pattern, configuration)
+        res.plans += plans
     
     if len(configurations) == 0:
-        res.plans.append(evaluate_resolved_pattern(pattern, {}))
+        res.plans += evaluate_resolved_pattern(pattern, {})
     
-    print "Returning " + str(len(res.plans)) + " plan" + ("s" if len(res.plans) != 1 else "")
+    print "[ :( ] No scoring for now, sorry. Defaulting to '0.0' for all of them."
+    
+    print "[ :) ] Returning " + str(len(res.plans)) + " plan" + ("s" if len(res.plans) != 1 else "")
     
     return res
 
 
 def handle_planning_request(req):
     if req.pattern != "":
-        print "Planning for pattern '" + req.pattern + "'"
+        print "[ :| ] Planning for pattern '" + req.pattern + "'"
         bindings_clean = []
         
         for binding in req.bindings:
@@ -295,13 +365,13 @@ def handle_planning_request(req):
         
         if len(bindings_clean) > 0:
             for binding in bindings_clean:
-                print " - " + binding.key + " = '" + binding.value + "'"
+                print "[ :| ] - " + binding.key + " = '" + binding.value + "'"
         else:
-            print "No (non-empty) bindings defined, resolving all possible solutions."
+            print "[ :( ] No (non-empty) bindings defined, resolving all possible solutions."
         
         return plan_replies(req.pattern, bindings_clean)
     else:
-        print "Empty pattern, returning zero reply (aka no plans inside)."
+        print "[ :( ] Empty pattern, returning zero reply (aka no plans inside)."
         return PlanningResponse()
 
 
@@ -311,7 +381,7 @@ def planning_server():
     
     load_data()
     
-    print "Ready to plan"
+    print "[ :) ] Ready to plan"
     rospy.spin()
 
 
