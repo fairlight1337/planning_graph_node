@@ -212,6 +212,7 @@ def expandCPD(dataset, configuration):
         
         for step in dataset:
             step_invocable = False
+            working_invocation = None
             
             for invocation in step["invocations"]:
                 invocation0 = invocation[str(step0uid)]
@@ -223,10 +224,11 @@ def expandCPD(dataset, configuration):
                 
                 if all_fit:
                     step_invocable = True
+                    working_invocation = invocation[str(step["uid"])].copy()
             
             if step_invocable:
                 step_copied = step.copy()
-                step_copied["invocations"] = [current_configuration]
+                step_copied["invocations"] = [working_invocation]#[current_configuration]
                 steps.append(step_copied)
             else:
                 all_steps_fit = False
