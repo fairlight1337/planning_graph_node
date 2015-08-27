@@ -47,6 +47,13 @@ from planning_msgs.msg import *
 loaded_datasets = []
 
 
+class TextFlags:
+    HAPPY = '\033[1;92m[ :) ]\033[0;97m'
+    INDIFFERENT = '\033[1;93m[ :| ]\033[0;97m'
+    SAD = '\033[1;91m[ :( ]\033[0;97m'
+    AWESOME = '\033[1;94m[ :D ]\033[0;97m'
+
+
 def process_loadable_dataset(dataset):
     steps = []
     
@@ -88,9 +95,9 @@ def load_data():
     filenames = ["deduced_experiences.json"]
     
     if len(filenames) > 0:
-        print "[ :| ] Loading plan data:"
+        print TextFlags.INDIFFERENT, "Loading plan data:"
         for filename in filenames:
-            print "[ :) ]  - " + filename
+            print TextFlags.HAPPY, "- " + filename
         
         with open(global_dir + "/" + filename, "r") as f:
             datasets = json.load(f)
@@ -98,7 +105,7 @@ def load_data():
             for dataset in datasets:
                 loaded_datasets.append(process_loadable_dataset(dataset))
     else:
-        print "[ :( ] No plan data defined. Is this what you intended?"
+        print TextFlags.SAD, "No plan data defined. Is this what you intended?"
 
 
 def resolve_pattern(pattern, bindings):
@@ -234,7 +241,7 @@ def expandCPD(dataset, configuration):
                 all_steps_fit = False
         
         if all_steps_fit:
-            print "[ :D ] OK, got", len(steps), "steps with", current_configuration
+            print TextFlags.AWESOME, "OK, got", len(steps), "steps with", current_configuration
             fitting_datasets.append(steps)
         
         index[configuration.keys()[0]] = index[configuration.keys()[0]] + 1
@@ -273,7 +280,7 @@ def evaluate_resolved_pattern(pattern, configuration):
             if dataset[0]["name"] == pattern_split[0] and len(dataset[0]["call-pattern"]) == len(pattern_split) - 1:
                 datasets.append(dataset)
     
-    print "[ :| ]", len(datasets), "structurally fitting datasets found"
+    print TextFlags.INDIFFERENT, len(datasets), "structurally fitting datasets found"
     
     unbound_parameters = []
     for parameter in pattern_split[1:]:
@@ -292,19 +299,19 @@ def evaluate_resolved_pattern(pattern, configuration):
                     if not uid_based_invocation[parameter] in configuration[parameter]:
                         configuration[parameter].append(uid_based_invocation[parameter])
     
-    print "[ :) ] Parameter configuration space:"
+    print TextFlags.HAPPY, "Parameter configuration space:"
     for parameter in configuration:
         values = ""
         
         for value in configuration[parameter]:
             values = values + (" | " if not values == "" else "") + "\"" + value + "\""
         
-        print "[ :) ]  - " + parameter + " = " + values
+        print TextFlags.HAPPY, "- " + parameter + " = " + values
     
     correctly_parameterized_datasets = expandCPDs(datasets, configuration)
     
     len_cpd = len(correctly_parameterized_datasets)
-    print "[ :) ]", len_cpd, "dataset" + ("s" if len_cpd != 1 else ""), "fit" + ("s" if len_cpd == 1 else ""), "the bindings supplied"
+    print TextFlags.HAPPY, len_cpd, "dataset" + ("s" if len_cpd != 1 else ""), "fit" + ("s" if len_cpd == 1 else ""), "the bindings supplied"
     
     sys.stdout.write('[ :| ] Constructing the corresponding step-by-step plans...')
     
@@ -330,7 +337,7 @@ def evaluate_resolved_pattern(pattern, configuration):
         
         returned_plans.append(plan)
     
-    print "[ :) ] done."
+    print "done."
     
     return returned_plans
 
@@ -349,16 +356,16 @@ def plan_replies(pattern, bindings):
     if len(configurations) == 0:
         res.plans += evaluate_resolved_pattern(pattern, {})
     
-    print "[ :( ] No scoring for now, sorry. Defaulting to '0.0' for all of them."
+    print TextFlags.SAD, "No scoring for now, sorry. Defaulting to '0.0' for all of them."
     
-    print "[ :) ] Returning " + str(len(res.plans)) + " plan" + ("s" if len(res.plans) != 1 else "")
+    print TextFlags.HAPPY, "Returning " + str(len(res.plans)) + " plan" + ("s" if len(res.plans) != 1 else "")
     
     return res
 
 
 def handle_planning_request(req):
     if req.pattern != "":
-        print "[ :| ] Planning for pattern '" + req.pattern + "'"
+        print TextFlags.INDIFFERENT, "Planning for pattern '" + req.pattern + "'"
         bindings_clean = []
         
         for binding in req.bindings:
@@ -367,13 +374,13 @@ def handle_planning_request(req):
         
         if len(bindings_clean) > 0:
             for binding in bindings_clean:
-                print "[ :| ] - " + binding.key + " = '" + binding.value + "'"
+                print TextFlags.INDIFFERENT, "- " + binding.key + " = '" + binding.value + "'"
         else:
-            print "[ :( ] No (non-empty) bindings defined, resolving all possible solutions."
+            print TextFlags.SAD, "No (non-empty) bindings defined, resolving all possible solutions."
         
         return plan_replies(req.pattern, bindings_clean)
     else:
-        print "[ :( ] Empty pattern, returning zero reply (aka no plans inside)."
+        print TextFlags.SAD, "Empty pattern, returning zero reply (aka no plans inside)."
         return PlanningResponse()
 
 
@@ -383,7 +390,7 @@ def planning_server():
     
     load_data()
     
-    print "[ :) ] Ready to plan"
+    print TextFlags.HAPPY, "Ready to plan"
     rospy.spin()
 
 
