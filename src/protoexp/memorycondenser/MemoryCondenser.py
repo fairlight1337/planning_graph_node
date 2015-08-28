@@ -523,11 +523,11 @@ class MemoryCondenser:
         else:
             print deduced
     
-    def expandPathways(self, ctx, nodes, root_action_count, trace = []):
+    def expandPathways(self, ctx, nodes, root_action_count, trace = [], relation = "root", correspondant = ""):
         expanded_pathways = []
         
         if not nodes[ctx]["uid"] in trace:
-            current_node = [{"node": ctx, "instances": nodes[ctx]["instances"], "uid": nodes[ctx]["uid"], "rel-occ": (float(nodes[ctx]["instances"]) / float(root_action_count)), "rel-term": (float(nodes[ctx]["terminal-instances"]) / float(nodes[ctx]["instances"])), "invocations": nodes[ctx]["invocations"], "call-pattern": nodes[ctx]["call-pattern"]}]
+            current_node = [{"node": ctx, "instances": nodes[ctx]["instances"], "uid": nodes[ctx]["uid"], "rel-occ": (float(nodes[ctx]["instances"]) / float(root_action_count)), "rel-term": (float(nodes[ctx]["terminal-instances"]) / float(nodes[ctx]["instances"])), "invocations": nodes[ctx]["invocations"], "call-pattern": nodes[ctx]["call-pattern"], "relation": relation, "correspondant": str(correspondant)}]
             children = self.getStartNodes(nodes[ctx]["children"])
             
             had_non_optional_children = False
@@ -535,7 +535,7 @@ class MemoryCondenser:
                 if not children[child]["optional"] == "true":
                     had_non_optional_children = True
                     
-                child_pathways = self.expandPathways(child, nodes[ctx]["children"], nodes[ctx]["instances"], trace + [nodes[ctx]["uid"]])
+                child_pathways = self.expandPathways(child, nodes[ctx]["children"], nodes[ctx]["instances"], trace + [nodes[ctx]["uid"]], "child", children[child]["uid"])
                 
                 for child_pathway in child_pathways:
                     expanded_pathways.append(current_node + child_pathway)
@@ -552,7 +552,7 @@ class MemoryCondenser:
                     if not nodes[next_action]["optional"] == "true":
                         had_non_optional_next_actions = True
                         
-                    expanded_next_pathways = self.expandPathways(next_action, nodes, nodes[ctx]["instances"], trace + [nodes[ctx]["uid"]])
+                    expanded_next_pathways = self.expandPathways(next_action, nodes, nodes[ctx]["instances"], trace + [nodes[ctx]["uid"]], "sibling", nodes[next_action]["uid"])
                     
                     for expanded_next_pathway in expanded_next_pathways:
                         for expanded_pathway in expanded_pathways:
