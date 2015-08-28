@@ -57,6 +57,7 @@ def get_plans(pattern, configuration):
     
     for key in configuration:
         bdg = Binding()
+        
         bdg.type = 0 # Only strings for now
         bdg.key = key
         bdg.value = configuration[key]
@@ -85,7 +86,10 @@ def test_requests():
     print TextFlags.MEH, "Running tests"
     
     request_pattern = "fetch-and-place ?object ?destination"
-    request_configurations = [{"?object": "cheese"}]
+    request_configurations = [{"?object": "spoon"},
+                              {"?object": "cheese"},
+                              {"?destination": "table"},
+                              {"?object": "cheese", "?destination": "closet"}]
     
     print TextFlags.MEH, " - Pattern to test for: '" + request_pattern + "'"
     print TextFlags.MEH, " -", len(request_configurations), "parameter configuration" + ("s" if len(request_configurations) != 1 else "")  + " to test"
