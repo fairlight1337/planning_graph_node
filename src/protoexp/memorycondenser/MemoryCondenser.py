@@ -2,7 +2,7 @@
 
 import sys
 import json
-
+import copy
 
 from OwlReader import OwlReader
 from DesignatorReader import DesignatorReader
@@ -507,7 +507,10 @@ class MemoryCondenser:
         
         fixed_deduced = []
         for d in deduced:
-            fixed_singular = d[2:]
+            fixed_singular = copy.deepcopy(d[2:])
+            fixed_singular[0]["relation"] = "root"
+            fixed_singular[0]["correspondant"] = ""
+            
             for step in fixed_singular:
                 for invocation in step["invocations"]:
                     invocation.pop(0, 0)
@@ -710,6 +713,39 @@ class MemoryCondenser:
         else:
             return 0
     
+    def reconstructItem(self, root, sequential):
+        if not "children" in root:
+            root["children"] = []
+        
+        if not "next" in root:
+            root["next"] = None
+        
+        for item in sequential:
+            #print item["correspondant"], root["uid"]
+            if item["correspondant"] == root["uid"]:
+                enriched_item = self.reconstructItem(item, sequential)
+                
+                if item["relation"] == "child":
+                    root["children"].append(enriched_item)
+                elif item["relation"] == "sibling":
+                    root["next"] = enriched_item
+        
+        return root
+    
+    def reassambleStructure(self, sequential):
+        root = None
+        
+        for item in sequential:
+            #sys.stderr.write(str(item))
+            if item["relation"] == "root":
+                root = item
+                break
+        
+        if root:
+            root = self.reconstructItem(root, sequential)
+        
+        return root
+    
     def printDotDeduced(self, deduced):
         counter = 0
         subgraphcounter = 0
@@ -727,6 +763,10 @@ class MemoryCondenser:
                 highest_score = acc_score
         
         deduced.sort(self.expScoreCmp)
+        deduced_reassambled = []
+        for d in deduced:
+            deduced_reassambled.append(self.reassambleStructure(d))
+        #print deduced_reassambled
         
         for line in deduced:
             dot += "  \n"
@@ -755,7 +795,7 @@ class MemoryCondenser:
                 else:
                     first = False
                 
-                dot += "    node_" + str(counter) + " [shape=box, label=\"" + node + " (" + str(round(rel_occ, 2)) + ")\"]\n"
+                dot += "    node_" + str(counter) + " [shape=box, label=\"" + node + " (" + str(round(rel_occ, 2)) + ", " + item["relation"] + ")\"]\n"
                 counter = counter + 1
             
             last_item = line[len(line) - 1]
