@@ -49,7 +49,7 @@ loaded_datasets = []
 
 class TextFlags:
     HAPPY = '\033[1;92m[ :) ]\033[0;97m'
-    INDIFFERENT = '\033[1;93m[ :| ]\033[0;97m'
+    MEH = '\033[1;93m[ :| ]\033[0;97m'
     SAD = '\033[1;91m[ :( ]\033[0;97m'
     AWESOME = '\033[1;94m[ :D ]\033[0;97m'
 
@@ -95,7 +95,7 @@ def load_data():
     filenames = ["deduced_experiences.json"]
     
     if len(filenames) > 0:
-        print TextFlags.INDIFFERENT, "Loading plan data:"
+        print TextFlags.MEH, "Loading plan data:"
         for filename in filenames:
             print TextFlags.HAPPY, "- " + filename
         
@@ -280,7 +280,7 @@ def evaluate_resolved_pattern(pattern, configuration):
             if dataset[0]["name"] == pattern_split[0] and len(dataset[0]["call-pattern"]) == len(pattern_split) - 1:
                 datasets.append(dataset)
     
-    print TextFlags.INDIFFERENT, len(datasets), "structurally fitting datasets found"
+    print TextFlags.MEH, len(datasets), "structurally fitting datasets found"
     
     unbound_parameters = []
     for parameter in pattern_split[1:]:
@@ -365,7 +365,7 @@ def plan_replies(pattern, bindings):
 
 def handle_planning_request(req):
     if req.pattern != "":
-        print TextFlags.INDIFFERENT, "Planning for pattern '" + req.pattern + "'"
+        print TextFlags.MEH, "Planning for pattern '" + req.pattern + "'"
         bindings_clean = []
         
         for binding in req.bindings:
@@ -374,7 +374,7 @@ def handle_planning_request(req):
         
         if len(bindings_clean) > 0:
             for binding in bindings_clean:
-                print TextFlags.INDIFFERENT, "- " + binding.key + " = '" + binding.value + "'"
+                print TextFlags.MEH, "- " + binding.key + " = '" + binding.value + "'"
         else:
             print TextFlags.SAD, "No (non-empty) bindings defined, resolving all possible solutions."
         
