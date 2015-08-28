@@ -212,7 +212,6 @@ def expandCPD(dataset, configuration):
         for parameter in configuration:
             current_configuration[parameter] = configuration[parameter][index[parameter]]
         
-        # do
         steps = []
         all_steps_fit = True
         step0uid = dataset[0]["uid"]
@@ -232,6 +231,7 @@ def expandCPD(dataset, configuration):
                 if all_fit:
                     step_invocable = True
                     working_invocation = invocation[str(step["uid"])].copy()
+                    break
             
             if step_invocable:
                 step_copied = step.copy()
@@ -324,6 +324,9 @@ def evaluate_resolved_pattern(pattern, configuration):
             
             planstep.type = "cram_function"
             planstep.pattern = step["name"]
+            
+            for part in step["call-pattern"]:
+                planstep.pattern += " " + part
             
             for parameter in step["invocations"][0]:
                 bdg = Binding()

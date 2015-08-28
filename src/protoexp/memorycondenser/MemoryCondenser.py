@@ -407,13 +407,13 @@ class MemoryCondenser:
             current_ctx = ctx
             while next_node:
                 nextCtx = self.tti[next_node].taskContext()
-                
                 call_pattern = self.tti[next_node].annotatedParameterValue("CALLPATTERN")
+                
                 if not call_pattern:
                     call_pattern = ""
                 
-                if not current_ctx in frame:
-                    frame[current_ctx] = {"children": {}, "next-actions" : {}, "uid" : self.uid_counter, "terminal-state": "false", "start-state": "false", "optional": "false", "instances": 0, "invocations": [], "call-pattern": call_pattern}
+                if not nextCtx in frame:
+                    frame[nextCtx] = {"children": {}, "next-actions" : {}, "uid" : self.uid_counter, "terminal-state": "false", "start-state": "false", "optional": "false", "instances": 0, "invocations": [], "call-pattern": call_pattern}
                     self.uid_counter = self.uid_counter + 1
                 
                 if not nextCtx in frame[current_ctx]["next-actions"] and not rootlevel:
@@ -601,7 +601,9 @@ class MemoryCondenser:
             if label[:21] == "REPLACEABLE-FUNCTION-":
                 label = label[21:]
             
-            dot += "  " + child_id + " [shape=box, label=\"" + label + " (" + str(children[child]["uid"]) + " / " + str(children[child]["instances"]) + ")\"]\n"
+            call_pattern = children[child]["call-pattern"]
+            
+            dot += "  " + child_id + " [shape=box, label=\"" + label + " (" + str(children[child]["uid"]) + " / " + str(children[child]["instances"]) + ")\n" + call_pattern + "\"]\n"
             
             if children[child]["terminal-state"] == "true":
                 if children[child]["terminal-instances"] > 0:
