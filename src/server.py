@@ -313,7 +313,7 @@ def evaluate_resolved_pattern(pattern, configuration):
     len_cpd = len(correctly_parameterized_datasets)
     print TextFlags.HAPPY, len_cpd, "dataset" + ("s" if len_cpd != 1 else ""), "fit" + ("s" if len_cpd == 1 else ""), "the bindings supplied"
     
-    sys.stdout.write('[ :| ] Constructing the corresponding step-by-step plans...')
+    sys.stdout.write(TextFlags.MEH + ' Constructing the corresponding step-by-step plans...')
     
     returned_plans = []
     for dataset in correctly_parameterized_datasets:
