@@ -47,3 +47,14 @@ borrowed from Prolog). If one or more of the keywords are omitted, default value
 This software is in its very early alpha phase and doesn't do much
 right now beyond serving as a development vessel. It will become more
 useful when the planned features are implemented.
+
+
+## Generating Prototypical Experiences
+
+The planning graph server is based on prototypical experiences (PEs),
+generated from collected robot experiences. These PEs are generated
+using the set of scripts present in `src/protoexp`. To create the
+default example dataset from an actual set of experiences, just run
+the `create_all.sh` script from anywhere. It will place the generated
+files (PDFs to look at, and the `deduced_experiences.json` used for
+this planning server) in the `data_created` directory.
