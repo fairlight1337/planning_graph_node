@@ -92,7 +92,14 @@ def test_requests():
                               {"?object": "cheese", "?destination": "closet"}]
     
     print TextFlags.MEH, " - Pattern to test for: '" + request_pattern + "'"
-    print TextFlags.MEH, " -", len(request_configurations), "parameter configuration" + ("s" if len(request_configurations) != 1 else "")  + " to test"
+    print TextFlags.MEH, " -", len(request_configurations), "parameter configuration" + ("s" if len(request_configurations) != 1 else "")  + " to test" + (":" if len(request_configurations) > 0 else "")
+    for configuration in request_configurations:
+        config_string = ""
+        
+        for key in configuration:
+            config_string = config_string + (", " if config_string != "" else "") + key + " = " + configuration[key]
+        
+        print TextFlags.MEH, "   [", config_string, "]"
     
     for configuration in request_configurations:
         resulting_pattern = request_pattern
