@@ -370,12 +370,11 @@ class MemoryCondenser:
         else:
             self.printInjected(dot = not data)
     
-    def injectExperienceNode(self, node, frame, rootlevel = False, invocation_path = {}):
-        ctx = self.tti[node].taskContext()
-        
-        params = self.tti[node].annotatedParameters()
+    def getParameters(self, node):
         params_fixed = {}
         call_pattern = ""
+        
+        params = self.tti[node].annotatedParameters()
         
         for param in params:
             if not param == "_time_created" and not param == "CALLPATTERN":
@@ -384,14 +383,28 @@ class MemoryCondenser:
             elif param == "CALLPATTERN":
                 call_pattern = params[param][0]
         
+        return (call_pattern, params_fixed)
+    
+    def injectExperienceNode(self, node, frame, rootlevel = False, invocation_path = {}):
+        ctx = self.tti[node].taskContext()
+        (call_pattern, params) = self.getParameters(node)
+        
         new_invocation_path = invocation_path.copy()
         
         if not ctx in frame:
-            new_invocation_path.update({self.uid_counter: params_fixed})
-            frame[ctx] = {"children": {}, "next-actions" : {}, "uid" : self.uid_counter, "terminal-state": "false", "start-state": "false", "optional": "false", "instances": 0, "invocations": [new_invocation_path], "call-pattern": call_pattern}
+            new_invocation_path.update({self.uid_counter: params})
+            frame[ctx] = {"children": {},
+                          "next-actions" : {},
+                          "uid" : self.uid_counter,
+                          "terminal-state": "false",
+                          "start-state": "false",
+                          "optional": "false",
+                          "instances": 0,
+                          "invocations": [new_invocation_path],
+                          "call-pattern": call_pattern}
             self.uid_counter = self.uid_counter + 1
         else:
-            new_invocation_path.update({frame[ctx]["uid"]: params_fixed})
+            new_invocation_path.update({frame[ctx]["uid"]: params})
             frame[ctx]["invocations"].append(new_invocation_path)
         
         frame[ctx]["instances"] = frame[ctx]["instances"] + 1
@@ -399,38 +412,50 @@ class MemoryCondenser:
         sub_nodes = self.tti[node].subActions()
         
         for sub in sub_nodes:
-            self.injectExperienceNode(sub, frame[ctx]["children"], False, new_invocation_path)
+            if not self.tti[sub].previousAction():
+                self.injectExperienceNode(sub, frame[ctx]["children"], False, new_invocation_path)
         
         next_node = self.tti[node].nextAction()
+        next_invocation_path = new_invocation_path.copy()
         
         if next_node:
             current_ctx = ctx
+            
             while next_node:
                 nextCtx = self.tti[next_node].taskContext()
-                call_pattern = self.tti[next_node].annotatedParameterValue("CALLPATTERN")
-                
-                if not call_pattern:
-                    call_pattern = ""
+                (call_pattern, next_params) = self.getParameters(next_node)
                 
                 if not nextCtx in frame:
-                    frame[nextCtx] = {"children": {}, "next-actions" : {}, "uid" : self.uid_counter, "terminal-state": "false", "start-state": "false", "optional": "false", "instances": 0, "invocations": [], "call-pattern": call_pattern}
+                    next_invocation_path.update({self.uid_counter: next_params})
+                    frame[nextCtx] = {"children": {},
+                                      "next-actions" : {},
+                                      "uid" : self.uid_counter,
+                                      "terminal-state": "false",
+                                      "start-state": "false",
+                                      "optional": "false",
+                                      "instances": 0,
+                                      "invocations": [next_invocation_path],
+                                      "call-pattern": call_pattern}
                     self.uid_counter = self.uid_counter + 1
+                else:
+                    next_invocation_path.update({frame[nextCtx]["uid"]: next_params})
+                    frame[nextCtx]["invocations"].append(next_invocation_path)
                 
-                if not nextCtx in frame[current_ctx]["next-actions"] and not rootlevel:
-                    if not nextCtx == current_ctx:
-                        if not nextCtx in frame[current_ctx]["next-actions"]:
-                            frame[current_ctx]["next-actions"][nextCtx] = []
-                        
-                        params = self.tti[next_node].annotatedParameters()
-                        params_fixed = {}
-                        
-                        for param in params:
-                            if not param == "_time_created":
-                                key_str = param[10:] if param[:10] == "parameter-" else param
-                                params_fixed[key_str] = params[param][0]
-                        
-                        frame[current_ctx]["next-actions"][nextCtx].append(params_fixed)
+                frame[nextCtx]["instances"] = frame[nextCtx]["instances"] + 1
+                
+                if not nextCtx in frame[current_ctx]["next-actions"] and not rootlevel and not nextCtx == current_ctx:
+                    if not nextCtx in frame[current_ctx]["next-actions"]:
+                        frame[current_ctx]["next-actions"][nextCtx] = []
                     
+                    (call_pattern, params) = self.getParameters(next_node)
+                    frame[current_ctx]["next-actions"][nextCtx].append(params)
+                
+                next_sub_nodes = self.tti[next_node].subActions()
+                
+                for sub in next_sub_nodes:
+                    if not self.tti[sub].previousAction():
+                        self.injectExperienceNode(sub, frame[nextCtx]["children"], False, next_invocation_path)
+                
                 next_node = self.tti[next_node].nextAction()
                 current_ctx = nextCtx
         else:
@@ -530,7 +555,15 @@ class MemoryCondenser:
         expanded_pathways = []
         
         if not nodes[ctx]["uid"] in trace:
-            current_node = [{"node": ctx, "instances": nodes[ctx]["instances"], "uid": nodes[ctx]["uid"], "rel-occ": (float(nodes[ctx]["instances"]) / float(root_action_count)), "rel-term": (float(nodes[ctx]["terminal-instances"]) / float(nodes[ctx]["instances"])), "invocations": nodes[ctx]["invocations"], "call-pattern": nodes[ctx]["call-pattern"], "relation": relation, "correspondant": str(correspondant)}]
+            current_node = [{"node": ctx,
+                             "instances": nodes[ctx]["instances"],
+                             "uid": nodes[ctx]["uid"],
+                             "rel-occ": (float(nodes[ctx]["instances"]) / float(root_action_count)),
+                             "rel-term": (float(nodes[ctx]["terminal-instances"]) / float(nodes[ctx]["instances"])),
+                             "invocations": nodes[ctx]["invocations"],
+                             "call-pattern": nodes[ctx]["call-pattern"],
+                             "relation": relation,
+                             "correspondant": str(correspondant)}]
             children = self.getStartNodes(nodes[ctx]["children"])
             
             had_non_optional_children = False
@@ -554,16 +587,16 @@ class MemoryCondenser:
                 if next_action != ctx:
                     if not nodes[next_action]["optional"] == "true":
                         had_non_optional_next_actions = True
-                        
+                    
                     expanded_next_pathways = self.expandPathways(next_action, nodes, nodes[ctx]["instances"], trace + [nodes[ctx]["uid"]], "sibling", nodes[next_action]["uid"])
                     
                     for expanded_next_pathway in expanded_next_pathways:
                         for expanded_pathway in expanded_pathways:
                             final_pathways = final_pathways + [expanded_pathway + expanded_next_pathway]
-                            
+            
             if not had_non_optional_next_actions:
                 final_pathways = final_pathways + expanded_pathways
-                
+            
             return final_pathways
         else:
             return []

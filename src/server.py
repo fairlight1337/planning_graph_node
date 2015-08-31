@@ -204,7 +204,7 @@ def expandCPD(dataset, configuration):
     index = {}
     for parameter in configuration:
         index[parameter] = 0
-    
+    print "    "
     run_loop = True
     while run_loop:
         current_configuration = {}
@@ -217,28 +217,55 @@ def expandCPD(dataset, configuration):
         step0uid = dataset[0]["uid"]
         
         for step in dataset:
-            step_invocable = False
             working_invocation = None
             
+            working_invs = 0
+            print step["name"]
             for invocation in step["invocations"]:
-                invocation0 = invocation[str(step0uid)]
+                step_invocable = False
                 
-                all_fit = True
-                for parameter in invocation0:
-                    if not invocation0[parameter] == current_configuration[parameter]:
-                        all_fit = False
+                # go through all invocations that match the trace so far
+                steps_valid = True
                 
-                if all_fit:
-                    step_invocable = True
-                    working_invocation = invocation[str(step["uid"])].copy()
+                for old_step in steps:
+                    print "old step", old_step
+                    print "new pattern", invocation
+                    
+                    for parameter in old_step["invocations"][0]:
+                        #if not str(old_step["uid"]) in invocation:
+                        #    steps_valid = False
+                        #el
+                        if invocation[str(old_step["uid"])][parameter] != old_step["invocations"][0][parameter]:
+                            steps_valid = False
+                
+                if steps_valid:
+                    invocation0 = invocation[str(step0uid)]
+                    
+                    all_fit = True
+                    for parameter in invocation0:
+                        if not invocation0[parameter] == current_configuration[parameter]:
+                            all_fit = False
+                    
+                    if all_fit:
+                        step_invocable = True
+                        working_invocation = invocation[str(step["uid"])].copy()
+                        working_invs = working_invs + 1
+                        
+                        #print " -", working_invocation
+                        #if step["name"] == "navigate":
+                        #   print working_invocation
+                        #break
+                
+                if step_invocable:
+                    step_copied = step.copy()
+                    step_copied["invocations"] = [working_invocation]#[current_configuration]
+                    #print "WI: ", working_invs
+                    #print working_invocation
+                    print "Added", step_copied["uid"]
+                    steps.append(step_copied)
                     break
-            
-            if step_invocable:
-                step_copied = step.copy()
-                step_copied["invocations"] = [working_invocation]#[current_configuration]
-                steps.append(step_copied)
-            else:
-                all_steps_fit = False
+                else:
+                    all_steps_fit = False
         
         if all_steps_fit:
             print TextFlags.AWESOME, "OK, got", len(steps), "steps with", current_configuration
