@@ -385,86 +385,59 @@ class MemoryCondenser:
         
         return (call_pattern, params_fixed)
     
-    def injectExperienceNode(self, node, frame, rootlevel = False, invocation_path = {}):
+    def emptyContext(self, invocation_path, call_pattern):
+        ctx = {"children": {},
+               "next-actions" : {},
+               "uid" : self.uid_counter,
+               "terminal-state": "false",
+               "start-state": "false",
+               "optional": "false",
+               "instances": 0,
+               "invocations": [invocation_path],
+               "call-pattern": call_pattern}
+        self.uid_counter = self.uid_counter + 1
+        
+        return ctx
+    
+    def updateFrameContext(self, frame, node, invocation_path, previous_node):
         ctx = self.tti[node].taskContext()
         (call_pattern, params) = self.getParameters(node)
         
-        new_invocation_path = invocation_path.copy()
-        
         if not ctx in frame:
-            new_invocation_path.update({self.uid_counter: params})
-            frame[ctx] = {"children": {},
-                          "next-actions" : {},
-                          "uid" : self.uid_counter,
-                          "terminal-state": "false",
-                          "start-state": "false",
-                          "optional": "false",
-                          "instances": 0,
-                          "invocations": [new_invocation_path],
-                          "call-pattern": call_pattern}
-            self.uid_counter = self.uid_counter + 1
+            invocation_path.update({self.uid_counter: params})
+            frame[ctx] = self.emptyContext(invocation_path, call_pattern)
         else:
-            new_invocation_path.update({frame[ctx]["uid"]: params})
-            frame[ctx]["invocations"].append(new_invocation_path)
+            invocation_path.update({frame[ctx]["uid"]: params})
+            frame[ctx]["invocations"].append(invocation_path)
+        
+        if frame[ctx]["start-state"] == "false":
+            if not self.tti[node].previousAction():
+                frame[ctx]["start-state"] = "true"
         
         frame[ctx]["instances"] = frame[ctx]["instances"] + 1
         
-        sub_nodes = self.tti[node].subActions()
+        if previous_node:
+            previous_ctx = self.tti[previous_node].taskContext()
+            
+            if not ctx in frame[previous_ctx]["next-actions"]:
+                frame[previous_ctx]["next-actions"][ctx] = []
+            
+            frame[previous_ctx]["next-actions"][ctx].append(params)
+    
+    def injectExperienceNode(self, node, frame, rootlevel = False, invocation_path = {}, previous_node = None):
+        ctx = self.tti[node].taskContext()
+        new_invocation_path = invocation_path.copy()
         
-        for sub in sub_nodes:
+        self.updateFrameContext(frame, node, new_invocation_path, previous_node)
+        
+        for sub in self.tti[node].subActions():
             if not self.tti[sub].previousAction():
                 self.injectExperienceNode(sub, frame[ctx]["children"], False, new_invocation_path)
         
         next_node = self.tti[node].nextAction()
-        next_invocation_path = new_invocation_path.copy()
         
         if next_node:
-            current_ctx = ctx
-            
-            while next_node:
-                nextCtx = self.tti[next_node].taskContext()
-                (call_pattern, next_params) = self.getParameters(next_node)
-                
-                if not nextCtx in frame:
-                    next_invocation_path.update({self.uid_counter: next_params})
-                    frame[nextCtx] = {"children": {},
-                                      "next-actions" : {},
-                                      "uid" : self.uid_counter,
-                                      "terminal-state": "false",
-                                      "start-state": "false",
-                                      "optional": "false",
-                                      "instances": 0,
-                                      "invocations": [next_invocation_path],
-                                      "call-pattern": call_pattern}
-                    self.uid_counter = self.uid_counter + 1
-                else:
-                    next_invocation_path.update({frame[nextCtx]["uid"]: next_params})
-                    frame[nextCtx]["invocations"].append(next_invocation_path)
-                
-                frame[nextCtx]["instances"] = frame[nextCtx]["instances"] + 1
-                
-                if not nextCtx in frame[current_ctx]["next-actions"] and not rootlevel and not nextCtx == current_ctx:
-                    if not nextCtx in frame[current_ctx]["next-actions"]:
-                        frame[current_ctx]["next-actions"][nextCtx] = []
-                    
-                    (call_pattern, params) = self.getParameters(next_node)
-                    frame[current_ctx]["next-actions"][nextCtx].append(params)
-                
-                next_sub_nodes = self.tti[next_node].subActions()
-                
-                for sub in next_sub_nodes:
-                    if not self.tti[sub].previousAction():
-                        self.injectExperienceNode(sub, frame[nextCtx]["children"], False, next_invocation_path)
-                
-                next_node = self.tti[next_node].nextAction()
-                current_ctx = nextCtx
-        else:
-            if len(self.tti[node].subActions()) == 0:
-                frame[ctx]["terminal-state"] = "true"
-        
-        if frame[ctx]["start-state"] == "false":
-            if self.tti[node].previousAction() == None:
-                frame[ctx]["start-state"] = "true"
+            self.injectExperienceNode(next_node, frame, False, new_invocation_path, node)
     
     def checkForOptionalInjectedNodes(self, ctx, frame, parent_instances = -1, came_from = None):
         if not "check-optional" in frame[ctx]:
