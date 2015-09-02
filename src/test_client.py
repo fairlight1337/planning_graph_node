@@ -87,7 +87,7 @@ def test_requests():
     
     request_pattern = "fetch-and-place ?object ?destination"
     request_configurations = [{"?object": "spoon"},
-                              {"?object": "cheese"},
+                              {"?object": "spoon", "?destination": "drawer"},
                               {"?destination": "table"},
                               {"?object": "cheese", "?destination": "closet"}]
     

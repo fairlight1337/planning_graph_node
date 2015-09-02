@@ -54,38 +54,58 @@ class TextFlags:
     AWESOME = '\033[1;94m[ :D ]\033[0;97m'
 
 
+def transform_invocations(node):
+    invocations_fixed = []
+    
+    for invocation in node["invocations"]:
+        invocation_fixed = {}
+        for uid in invocation:
+            invocation_fixed[uid] = {}
+            for parameter in invocation[uid]:
+                invocation_fixed[uid][param_exp_to_prolog(parameter)] = invocation[uid][parameter]
+        
+        invocations_fixed.append(invocation_fixed)
+    
+    node["invocations"] = invocations_fixed
+    
+    if "next-action" in node:
+        transform_invocations(node["next-action"])
+    
+    if "child" in node:
+        transform_invocations(node["child"])
+
+
+def transform_callpattern(node):
+    call_pattern_split = node["call-pattern"].split(" ")
+    call_pattern_fixed = []
+    
+    for parameter in call_pattern_split:
+        call_pattern_fixed.append(param_exp_to_prolog(parameter))
+    
+    node["call-pattern"] = call_pattern_fixed
+    
+    if "next-action" in node:
+        transform_callpattern(node["next-action"])
+    
+    if "child" in node:
+        transform_callpattern(node["child"])
+
+
+def transform_name(node):
+    node["name"] = (node["name"][21:] if node["name"][:21] == "REPLACEABLE-FUNCTION-" else node["name"]).lower()
+    
+    if "next-action" in node:
+        transform_name(node["next-action"])
+    
+    if "child" in node:
+        transform_name(node["child"])
+
+
 def process_loadable_dataset(dataset):
-    steps = []
-    
-    for step in dataset:
-        invocations_processed = []
-        
-        for invocation in step["invocations"]:
-            invocation_processed = {}
-            
-            for node_uid in invocation:
-                parameters = invocation[node_uid]
-                node_call_processed = {}
-                
-                for parameter in parameters:
-                    node_call_processed[param_exp_to_prolog(parameter)] = parameters[parameter]
-                
-                invocation_processed[node_uid] = node_call_processed
-            
-            invocations_processed.append(invocation_processed)
-        
-        call_pattern_split = step["call-pattern"].split(" ")
-        call_pattern = []
-        
-        for call_pattern_param in call_pattern_split:
-            call_pattern.append(param_exp_to_prolog(call_pattern_param))
-        
-        steps.append({"name": (step["node"][21:] if step["node"][:21] == "REPLACEABLE-FUNCTION-" else step["node"]).lower(),
-                      "invocations": invocations_processed,
-                      "call-pattern": call_pattern,
-                      "uid": step["uid"]})
-    
-    return steps
+    # Careful: This function operates by reference, _NOT_BY_VALUE_.
+    transform_invocations(dataset)
+    transform_callpattern(dataset)
+    transform_name(dataset)
 
 
 def load_data():
@@ -103,7 +123,8 @@ def load_data():
             datasets = json.load(f)
             
             for dataset in datasets:
-                loaded_datasets.append(process_loadable_dataset(dataset))
+                process_loadable_dataset(dataset)
+                loaded_datasets.append(dataset)
     else:
         print TextFlags.SAD, "No plan data defined. Is this what you intended?"
 
@@ -174,22 +195,6 @@ def unify_bindings(bindings):
     return dic_bindings
 
 
-def make_step(type, pattern):
-    step = Step()
-    step.type = type
-    step.pattern = pattern
-    
-    return step
-
-
-def make_binding(key, value):
-    binding = Binding()
-    binding.key = key
-    binding.value = value
-    
-    return binding
-
-
 def param_exp_to_prolog(param):
     return "?" + param.lower()
 
@@ -198,101 +203,111 @@ def param_prolog_to_exp(param):
     return param[1:].upper()
 
 
-def expandCPD(dataset, configuration):
-    fitting_datasets = []
+def construct_steps(node, invocations, parent, parent_id, parent_invocation_space):
+    step = Step()
+    steps = []
     
-    index = {}
-    for parameter in configuration:
-        index[parameter] = 0
-    print "    "
-    run_loop = True
-    while run_loop:
-        current_configuration = {}
-        
-        for parameter in configuration:
-            current_configuration[parameter] = configuration[parameter][index[parameter]]
-        
-        steps = []
-        all_steps_fit = True
-        step0uid = dataset[0]["uid"]
-        
-        for step in dataset:
-            working_invocation = None
-            
-            working_invs = 0
-            print step["name"]
-            for invocation in step["invocations"]:
-                step_invocable = False
-                
-                # go through all invocations that match the trace so far
-                steps_valid = True
-                
-                for old_step in steps:
-                    print "old step", old_step
-                    print "new pattern", invocation
-                    
-                    for parameter in old_step["invocations"][0]:
-                        #if not str(old_step["uid"]) in invocation:
-                        #    steps_valid = False
-                        #el
-                        if invocation[str(old_step["uid"])][parameter] != old_step["invocations"][0][parameter]:
-                            steps_valid = False
-                
-                if steps_valid:
-                    invocation0 = invocation[str(step0uid)]
-                    
-                    all_fit = True
-                    for parameter in invocation0:
-                        if not invocation0[parameter] == current_configuration[parameter]:
-                            all_fit = False
-                    
-                    if all_fit:
-                        step_invocable = True
-                        working_invocation = invocation[str(step["uid"])].copy()
-                        working_invs = working_invs + 1
-                        
-                        #print " -", working_invocation
-                        #if step["name"] == "navigate":
-                        #   print working_invocation
-                        #break
-                
-                if step_invocable:
-                    step_copied = step.copy()
-                    step_copied["invocations"] = [working_invocation]#[current_configuration]
-                    #print "WI: ", working_invs
-                    #print working_invocation
-                    print "Added", step_copied["uid"]
-                    steps.append(step_copied)
-                    break
-                else:
-                    all_steps_fit = False
-        
-        if all_steps_fit:
-            print TextFlags.AWESOME, "OK, got", len(steps), "steps with", current_configuration
-            fitting_datasets.append(steps)
-        
-        index[configuration.keys()[0]] = index[configuration.keys()[0]] + 1
-        for i in range(len(configuration)):
-            parameter = configuration.keys()[i]
-            
-            if index[parameter] >= len(configuration[parameter]):
-                if i == len(configuration) - 1:
-                    run_loop = False
-                    break
-                else:
-                    index[parameter] = 0
-                    index[configuration.keys()[i + 1]] = index[configuration.keys()[i + 1]] + 1
+    step.type = "cram_function" # Everything is a `cram_function` right now.
+    step.pattern = node["name"]
+    step.parent = parent
+    step.id = node["node"]
     
-    return fitting_datasets
+    for parameter in node["call-pattern"]:
+        collected_values = []
+        valid_invocations = get_valid_invocations(node, str(parent_id), parent_invocation_space)
+        
+        for invocation in valid_invocations:
+            if str(step.id) in invocation:
+                parameters = invocation[str(step.id)]
+                if parameter in parameters:
+                    if not parameters[parameter] in collected_values:
+                        collected_values.append(parameters[parameter])
+        
+        for value in collected_values:
+            bdg = Binding()
+            bdg.type = 0 # String
+            bdg.key = parameter
+            bdg.value = value
+            
+            step.bindings.append(bdg)
+    
+    steps.append(step)
+    
+    if "next-action" in node:
+        steps += construct_steps(node["next-action"], invocations, parent, str(node["node"]), accumulate_invocations(node))
+    
+    if "child" in node:
+        steps += construct_steps(node["child"], invocations, node["node"], str(node["node"]), accumulate_invocations(node))
+    
+    return steps
 
 
-def expandCPDs(datasets, configuration):
-    cpds = []
+def accumulate_invocations(dataset):
+    acc = {}
+    id = str(dataset["node"])
+    
+    for invocation in dataset["invocations"]:
+        for parameter in invocation[id]:
+            if not parameter in acc:
+                acc[parameter] = []
+            
+            acc[parameter].append(invocation[id][parameter])
+    
+    return acc
+
+
+def construct_plan(dataset, invocations):
+    plan = Plan()
+    
+    plan.score = 0.0;
+    plan.steps = construct_steps(dataset, invocations, -1, dataset["node"], accumulate_invocations(dataset))
+    
+    return plan
+
+
+def construct_plans(datasets, configuration):
+    plans = []
+    invocable_datasets = {}
     
     for dataset in datasets:
-        cpds += expandCPD(dataset, configuration)
+        valid_invocations = get_valid_invocations(dataset, str(dataset["node"]), configuration)
+        
+        if len(valid_invocations) > 0:
+            plans.append(construct_plan(dataset, valid_invocations))
     
-    return cpds
+    finished_plans = []
+    
+    for plan in plans:
+        plan_ok = True
+        
+        for step in plan.steps:
+            if len(step.bindings) == 0:
+                plan_ok = False
+                break
+        
+        if plan_ok:
+            finished_plans.append(plan)
+    
+    return finished_plans
+
+
+def get_valid_invocations(dataset, parent_id, configuration):
+    valid_invocations = []
+    
+    for invocation in dataset["invocations"]:
+        if parent_id in invocation:
+            valid = True
+            inv_first = invocation[parent_id]
+            
+            for parameter in inv_first:
+                if not inv_first[parameter] in configuration[parameter]:
+                    valid = False
+                    break
+            
+            if valid:
+                valid_invocations.append(invocation)
+    
+    return valid_invocations
 
 
 def evaluate_resolved_pattern(pattern, configuration):
@@ -303,11 +318,19 @@ def evaluate_resolved_pattern(pattern, configuration):
     
     # Filter for fitting datasets
     for dataset in loaded_datasets:
-        if len(dataset) > 0:
-            if dataset[0]["name"] == pattern_split[0] and len(dataset[0]["call-pattern"]) == len(pattern_split) - 1:
-                datasets.append(dataset)
+        if dataset["name"] == pattern_split[0] and len(dataset["call-pattern"]) == len(pattern_split) - 1:
+            datasets.append(dataset)
     
-    print TextFlags.MEH, len(datasets), "structurally fitting datasets found"
+    print TextFlags.MEH, len(datasets), "structurally fitting datasets found for '" + pattern_split[0] + "' (" + str(len(pattern_split) - 1) + " parameter" + ("s" if len(pattern_split) - 1 != 1 else "") + ")"
+    
+    # TODO: Remember to put in parameter transformations here for
+    # allowing the caller to use differently named parameters than the
+    # ones saved in the dataset! The structurally fitness test already
+    # reflects this, but the machinery behind this needs to take that
+    # into account as well. Should be possible by just 'recasting' the
+    # configuration for every loaded dataset on the fly (as they might
+    # have differently named parameters as well although the amount is
+    # the same).
     
     unbound_parameters = []
     for parameter in pattern_split[1:]:
@@ -316,10 +339,8 @@ def evaluate_resolved_pattern(pattern, configuration):
             configuration[parameter] = []
     
     for dataset in datasets:
-        step0 = dataset[0]
-        
-        for invocation in step0["invocations"]:
-            uid_based_invocation = invocation[str(dataset[0]["uid"])]
+        for invocation in dataset["invocations"]:
+            uid_based_invocation = invocation[str(dataset["node"])]
             
             for parameter in uid_based_invocation:
                 if parameter in unbound_parameters:
@@ -335,39 +356,7 @@ def evaluate_resolved_pattern(pattern, configuration):
         
         print TextFlags.HAPPY, "- " + parameter + " = " + values
     
-    correctly_parameterized_datasets = expandCPDs(datasets, configuration)
-    
-    len_cpd = len(correctly_parameterized_datasets)
-    print TextFlags.HAPPY, len_cpd, "dataset" + ("s" if len_cpd != 1 else ""), "fit" + ("s" if len_cpd == 1 else ""), "the bindings supplied"
-    
-    sys.stdout.write(TextFlags.MEH + ' Constructing the corresponding step-by-step plans...')
-    
-    returned_plans = []
-    for dataset in correctly_parameterized_datasets:
-        plan = Plan()
-        
-        for step in dataset:
-            planstep = Step()
-            
-            planstep.type = "cram_function"
-            planstep.pattern = step["name"]
-            
-            for part in step["call-pattern"]:
-                planstep.pattern += " " + part
-            
-            for parameter in step["invocations"][0]:
-                bdg = Binding()
-                bdg.type = 0
-                bdg.key = parameter
-                bdg.value = step["invocations"][0][parameter]
-                
-                planstep.bindings.append(bdg)
-            
-            plan.steps.append(planstep)
-        
-        returned_plans.append(plan)
-    
-    print "done."
+    returned_plans = construct_plans(datasets, configuration)
     
     return returned_plans
 
@@ -383,11 +372,7 @@ def plan_replies(pattern, bindings):
         plans = evaluate_resolved_pattern(pattern, configuration)
         res.plans += plans
     
-    if len(configurations) == 0:
-        res.plans += evaluate_resolved_pattern(pattern, {})
-    
-    print TextFlags.SAD, "No scoring for now, sorry. Defaulting to '0.0' for all of them."
-    
+    print TextFlags.SAD, "No scoring for plans for now, sorry. Defaulting to '0.0' for all of them."
     print TextFlags.HAPPY, "Returning " + str(len(res.plans)) + " plan" + ("s" if len(res.plans) != 1 else "")
     
     return res

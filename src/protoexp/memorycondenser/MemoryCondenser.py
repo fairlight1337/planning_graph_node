@@ -351,7 +351,7 @@ class MemoryCondenser:
             self.tti.update(owlData["task-tree-individuals"])
             
             for node in metaData.subActions():
-                self.injectExperienceNode(node, self.arrInjected)
+                self.injectExperienceNode(node, self.arrInjected, True)
                 root_action_count = root_action_count + 1
         
         for experience in self.arrExperiences:
@@ -416,7 +416,7 @@ class MemoryCondenser:
                 if not self.tti[node].previousAction():
                     frame[ctx]["start-state"] = "true"
             
-            frame[ctx]["instances"] = frame[ctx]["instances"] + 1
+            frame[ctx]["instances"] += 1
             
             if previous_ctx:
                 if not ctx in frame[previous_ctx]["next-actions"]:
@@ -438,7 +438,7 @@ class MemoryCondenser:
         
         next_node = self.tti[node].nextAction()
         
-        if next_node:
+        if next_node and not rootlevel and not ctx == self.tti[next_node].taskContext():
             self.injectExperienceNode(next_node, frame, False, new_invocation_path, node)
     
     def checkForOptionalInjectedNodes(self, ctx, frame, parent_instances = -1, came_from = None):
