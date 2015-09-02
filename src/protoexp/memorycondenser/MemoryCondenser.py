@@ -399,36 +399,38 @@ class MemoryCondenser:
         
         return ctx
     
-    def updateFrameContext(self, frame, node, invocation_path, previous_node):
+    def updateFrameContext(self, node, frame, invocation_path, previous_ctx):
         ctx = self.tti[node].taskContext()
-        (call_pattern, params) = self.getParameters(node)
         
-        if not ctx in frame:
-            invocation_path.update({self.uid_counter: params})
-            frame[ctx] = self.emptyContext(invocation_path, call_pattern)
-        else:
-            invocation_path.update({frame[ctx]["uid"]: params})
-            frame[ctx]["invocations"].append(invocation_path)
-        
-        if frame[ctx]["start-state"] == "false":
-            if not self.tti[node].previousAction():
-                frame[ctx]["start-state"] = "true"
-        
-        frame[ctx]["instances"] = frame[ctx]["instances"] + 1
-        
-        if previous_node:
-            previous_ctx = self.tti[previous_node].taskContext()
+        if ctx != previous_ctx:
+            (call_pattern, params) = self.getParameters(node)
             
-            if not ctx in frame[previous_ctx]["next-actions"]:
-                frame[previous_ctx]["next-actions"][ctx] = []
+            if not ctx in frame:
+                invocation_path.update({self.uid_counter: params})
+                frame[ctx] = self.emptyContext(invocation_path, call_pattern)
+            else:
+                invocation_path.update({frame[ctx]["uid"]: params})
+                frame[ctx]["invocations"].append(invocation_path)
             
-            frame[previous_ctx]["next-actions"][ctx].append(params)
+            if frame[ctx]["start-state"] == "false":
+                if not self.tti[node].previousAction():
+                    frame[ctx]["start-state"] = "true"
+            
+            frame[ctx]["instances"] = frame[ctx]["instances"] + 1
+            
+            if previous_ctx:
+                if not ctx in frame[previous_ctx]["next-actions"]:
+                    frame[previous_ctx]["next-actions"][ctx] = []
+                
+                frame[previous_ctx]["next-actions"][ctx].append(params)
     
     def injectExperienceNode(self, node, frame, rootlevel = False, invocation_path = {}, previous_node = None):
         ctx = self.tti[node].taskContext()
         new_invocation_path = invocation_path.copy()
         
-        self.updateFrameContext(frame, node, new_invocation_path, previous_node)
+        self.updateFrameContext(node, frame, new_invocation_path, self.tti[previous_node].taskContext() if previous_node else None)
+        num_children = len(frame[ctx]["children"])
+        num_siblings = len(frame[ctx]["next-actions"])
         
         for sub in self.tti[node].subActions():
             if not self.tti[sub].previousAction():
@@ -442,6 +444,7 @@ class MemoryCondenser:
     def checkForOptionalInjectedNodes(self, ctx, frame, parent_instances = -1, came_from = None):
         if not "check-optional" in frame[ctx]:
             frame[ctx]["check-optional"] = "done"
+            frame[ctx]["optional"] = "false"
             
             came_from_terminates = False
             came_from_valid = True
@@ -453,7 +456,7 @@ class MemoryCondenser:
                     came_from_terminates = True
             
             if came_from_valid == True:
-                if frame[ctx]["instances"] < parent_instances or came_from_terminates:
+                if frame[ctx]["instances"] < parent_instances:
                     frame[ctx]["optional"] = "true"
             
             for child in frame[ctx]["children"]:
@@ -467,27 +470,24 @@ class MemoryCondenser:
     def checkForTerminalStateOccurrences(self, ctx, frame):
         if not "check-terminal" in frame[ctx]:
             frame[ctx]["check-terminal"] = "done"
+            frame[ctx]["terminal-state"] = "true"
             
             child_instances = 0
             next_instances = 0
             
-            if frame[ctx]["terminal-state"] == "true":
-                for child in frame[ctx]["children"]:
-                    if frame[ctx]["children"][child]["start-state"] == "true":
-                        child_instances = child_instances + frame[ctx]["children"][child]["instances"]
-                
-                for next_action in frame[ctx]["next-actions"]:
-                    if next_action in frame and not next_action == ctx:
-                        next_instances = next_instances + frame[next_action]["instances"]
-                
-                terminal_instances = frame[ctx]["instances"] - (child_instances + next_instances)
-                
-                if terminal_instances > 0:
-                    frame[ctx]["terminal-instances"] = terminal_instances
-                else:
-                    frame[ctx]["terminal-instances"] = 0
+            for child in frame[ctx]["children"]:
+                if frame[ctx]["children"][child]["start-state"] == "true":
+                    child_instances = child_instances + frame[ctx]["children"][child]["instances"]
+            
+            for next_action in frame[ctx]["next-actions"]:
+                if next_action in frame and not next_action == ctx:
+                    next_instances = next_instances + frame[next_action]["instances"]
+            
+            terminal_instances = frame[ctx]["instances"] - (child_instances + next_instances)
+            
+            if terminal_instances > 0:
+                frame[ctx]["terminal-instances"] = terminal_instances
             else:
-                frame[ctx]["terminal-state"] = "false"
                 frame[ctx]["terminal-instances"] = 0
             
             for child in frame[ctx]["children"]:
@@ -505,14 +505,11 @@ class MemoryCondenser:
         
         fixed_deduced = []
         for d in deduced:
-            fixed_singular = copy.deepcopy(d[2:])
-            fixed_singular[0]["relation"] = "root"
-            fixed_singular[0]["correspondant"] = ""
+            fixed_singular = d["child"]["child"]
             
-            for step in fixed_singular:
-                for invocation in step["invocations"]:
-                    invocation.pop(0, 0)
-                    invocation.pop(1, 0)
+            for invocation in fixed_singular["invocations"]:
+                invocation.pop(0, 0)
+                invocation.pop(1, 0)
             
             fixed_deduced.append(fixed_singular)
         
@@ -524,55 +521,207 @@ class MemoryCondenser:
         else:
             print deduced
     
-    def expandPathways(self, ctx, nodes, root_action_count, trace = [], relation = "root", correspondant = ""):
-        expanded_pathways = []
+    def allPossibleCombinations(self, n, static_indices):
+        solutions = []
+        prototype = []
         
-        if not nodes[ctx]["uid"] in trace:
-            current_node = [{"node": ctx,
-                             "instances": nodes[ctx]["instances"],
-                             "uid": nodes[ctx]["uid"],
-                             "rel-occ": (float(nodes[ctx]["instances"]) / float(root_action_count)),
-                             "rel-term": (float(nodes[ctx]["terminal-instances"]) / float(nodes[ctx]["instances"])),
-                             "invocations": nodes[ctx]["invocations"],
-                             "call-pattern": nodes[ctx]["call-pattern"],
-                             "relation": relation,
-                             "correspondant": str(correspondant)}]
-            children = self.getStartNodes(nodes[ctx]["children"])
+        for i in range(n):
+            prototype.append(1 if i in static_indices else 0)
+        
+        run = True
+        while run:
+            prototype[0] = prototype[0] + 1
             
-            had_non_optional_children = False
-            for child in children:
-                if not children[child]["optional"] == "true":
-                    had_non_optional_children = True
+            for i in range(n):
+                if prototype[i] > 1:
+                    prototype[i] = 1 if i in static_indices else 0
                     
-                child_pathways = self.expandPathways(child, nodes[ctx]["children"], nodes[ctx]["instances"], trace + [nodes[ctx]["uid"]], "child", children[child]["uid"])
-                
-                for child_pathway in child_pathways:
-                    expanded_pathways.append(current_node + child_pathway)
-                    
-            if not had_non_optional_children:
-                expanded_pathways.append(current_node)
-                
-            next_actions = nodes[ctx]["next-actions"]
-            final_pathways = []
+                    if i < n - 1:
+                        prototype[i + 1] = prototype[i + 1] + 1
+                    else:
+                        run = False
             
-            had_non_optional_next_actions = False
-            for next_action in next_actions:
+            solutions.append(copy.deepcopy(prototype))
+        
+        return solutions
+    
+    def allPossiblePermutationIndices(self, lengths):
+        indices = []
+        for i in range(len(lengths)):
+            indices.append(0)
+        
+        solutions = []
+        
+        if len(indices) > 0:
+            run = True
+            while run:
+                indices[0] = indices[0] + 1
+                
+                for i in range(len(lengths)):
+                    if indices[i] >= lengths[i]:
+                        indices[i] = 0
+                        
+                        if i == len(lengths) - 1:
+                            run = False
+                        else:
+                            indices[i + 1] = indices[i + 1] + 1
+                
+                solutions.append(copy.deepcopy(indices))
+        
+        return solutions
+    
+    def allPossiblePermutations(self, objects):
+        lengths = []
+        for object in objects:
+            lengths.append(len(object))
+        
+        indices = self.allPossiblePermutationIndices(lengths)
+        solutions = []
+        
+        for index in indices:
+            solution = []
+            
+            for i in range(len(objects)):
+                solution.append(objects[i][index[i]])
+            
+            solutions.append(copy.deepcopy(solution))
+        
+        return solutions
+    
+    def allPossibleSingularPermutations(self, objects, static_indices):
+        objects_extended = []
+        for i in range(len(objects)):
+            add = [object, None] if not i in static_indices else [object]
+            objects_extended.append(add)
+        
+        solutions_pre = self.allPossiblePermutations(objects_extended)
+        solutions = []
+        
+        for solution_pre in solutions_pre:
+            for bit in solution_pre:
+                if bit != None:
+                    solutions.append(bit)
+        
+        return solutions
+    
+    def expandPaths(self, ctx, nodes, trace):
+        paths = []
+        
+        node = nodes[ctx]
+        if not node["uid"] in trace:
+            node_desc = {"node": node["uid"],
+                         "name": ctx,
+                         "optional": node["optional"],
+                         "invocations": [],
+                         "instances": node["instances"],
+                         "call-pattern": node["call-pattern"],
+                         "theoretical": "false"}
+            current_trace = copy.deepcopy(trace) + [node_desc["node"]]
+            
+            for invocation in node["invocations"]:
+                invocation_fits = True
+                
+                for uid in invocation:
+                    if not uid in current_trace:
+                        invocation_fits = False
+                        break
+                
+                if invocation_fits:
+                    node_desc["invocations"].append(invocation)
+            
+            if len(node_desc["invocations"]) == 0:
+                node_desc["theoretical"] = "true"
+            
+            child_paths = []
+            
+            for child in self.getStartNodes(node["children"]):
+                expanded_child_paths = self.expandPaths(child, node["children"], current_trace)
+                child_paths += expanded_child_paths
+            
+            next_action_paths = []
+            
+            for next_action in node["next-actions"]:
                 if next_action != ctx:
-                    if not nodes[next_action]["optional"] == "true":
-                        had_non_optional_next_actions = True
-                    
-                    expanded_next_pathways = self.expandPathways(next_action, nodes, nodes[ctx]["instances"], trace + [nodes[ctx]["uid"]], "sibling", nodes[next_action]["uid"])
-                    
-                    for expanded_next_pathway in expanded_next_pathways:
-                        for expanded_pathway in expanded_pathways:
-                            final_pathways = final_pathways + [expanded_pathway + expanded_next_pathway]
+                    expanded_next_action_paths = self.expandPaths(next_action, nodes, current_trace)
+                    next_action_paths += expanded_next_action_paths
             
-            if not had_non_optional_next_actions:
-                final_pathways = final_pathways + expanded_pathways
+            if len(child_paths) > 0 and len(next_action_paths) > 0:
+                children_optional = True
+                
+                for child_path in child_paths:
+                    current_child_copy = copy.deepcopy(node_desc)
+                    current_child_copy["child"] = child_path
+                    
+                    if child_path["optional"] != "true":
+                        children_optional = False
+                    
+                    next_actions_optional = True
+                    
+                    for next_action in next_action_paths:
+                        current_child_next_copy = copy.deepcopy(current_child_copy)
+                        current_child_next_copy["next-action"] = next_action
+                        
+                        if next_action["optional"] != "true":
+                            next_actions_optional = False
+                        
+                        paths.append(current_child_next_copy)
+                    
+                    if next_actions_optional:
+                        paths.append(current_child_copy)
+                if children_optional:
+                    paths.append(node_desc)
+            elif len(child_paths) > 0:
+                children_optional = True
+                
+                for child_path in child_paths:
+                    current_child_copy = copy.deepcopy(node_desc)
+                    current_child_copy["child"] = child_path
+                    
+                    if child_path["optional"] != "true":
+                        children_optional = False
+                    
+                    paths.append(current_child_copy)
+                
+                if children_optional:
+                    paths.append(node_desc)
+            elif len(next_action_paths) > 0:
+                next_actions_optional = True
+                
+                for next_action in next_action_paths:
+                    current_next_copy = copy.deepcopy(node_desc)
+                    current_next_copy["next-action"] = next_action
+                    
+                    if next_action["optional"] != "true":
+                        next_actions_optional = False
+                    
+                    paths.append(current_next_copy)
+                
+                if next_actions_optional:
+                    paths.append(node_desc)
+            else:
+                paths.append(node_desc)
+        
+        return paths
+    
+    def printPath(self, path, indentation = "", is_next = False):
+        sys.stdout.write(indentation + str(path["node"]))
+        
+        if "next-action" in path:
+            self.printPath(path["next-action"], "   ", True)
+        
+        if not is_next:
+            sys.stdout.write("\n")
+        
+        if "child" in path:
+            if is_next:
+                sys.stdout.write("   \n")
             
-            return final_pathways
-        else:
-            return []
+            self.printPath(path["child"], "    " if is_next else "")
+    
+    def expandPathways(self, ctx, nodes, root_action_count, trace = [], relation = "root", correspondant = ""):
+        pathways = self.expandPaths(ctx, nodes, [])
+        
+        return pathways
     
     def getStartNodes(self, nodes):
         start_nodes = {}
@@ -646,10 +795,7 @@ class MemoryCondenser:
                         next_action_parameters[na][child_id] = []
                     
                     edge_pointers[na].append(child_id)
-                    #next_action_parameters[na][child_id].append(children[child]["next-actions"][na])
         
-        #print "!"
-        #print next_action_parameters
         for child in children:
             child_id = ids[child]
             
@@ -752,72 +898,128 @@ class MemoryCondenser:
         
         return root
     
+    def printDeducedPlan(self, plan, indentation):
+        dot = ""
+        
+        this_node = "node_" + str(self.node_counter)
+        name = (plan["name"][21:] if plan["name"][:21] == "REPLACEABLE-FUNCTION-" else plan["name"]).lower()
+        
+        line_name = name + " (ID " + str(plan["node"]) + "" + (", theoretical" if plan["theoretical"] == "true" else "") + ")"
+        line_call_pattern = plan["call-pattern"]
+        line_invocations = str(len(plan["invocations"])) + " invocation" + ("" if len(plan["invocations"]) == 1 else "s")
+        
+        line_name = line_name + ("" if line_name == "" else "\n")
+        line_call_pattern = line_call_pattern + ("" if line_call_pattern == "" else "\n")
+        line_invocations = line_invocations + ("" if line_invocations == "" else "\n")
+        
+        dot += indentation + this_node + " [shape=box, label=\"" + line_name + line_call_pattern + line_invocations + "\"];\n"
+        self.node_counter = self.node_counter + 1
+        
+        if "next-action" in plan:
+            (dot_new, that_node) = self.printDeducedPlan(plan["next-action"], indentation)
+            dot += dot_new
+            
+            dot += indentation + "{rank=same; " + this_node + " " + that_node + "};\n"
+            
+            dot += indentation + "edge [arrowhead=empty, arrowtail=none, label=\"sequence\"]\n"
+            dot += indentation + this_node + " -> " + that_node + ";\n"
+        
+        if "child" in plan:
+            (dot_new, that_node) = self.printDeducedPlan(plan["child"], indentation)
+            dot += dot_new
+            
+            dot += indentation + "edge [arrowhead=normal, arrowtail=none, label=\"child\"]\n"
+            dot += indentation + this_node + " -> " + that_node + ";\n"
+        
+        return (dot, this_node)
+    
     def printDotDeduced(self, deduced):
+        self.node_counter = 0
+        
         counter = 0
         subgraphcounter = 0
-        
+        #print len(deduced)
+        #print deduced
+        #exit(-1)
         dot = "digraph deduced {\n"
         dot += "  label=\"Deduced Possible Action Paths\"\n"
         dot += "  labeljust=center\n"
         dot += "  labelloc=top\n"
         
-        highest_score = 0
-        for line in deduced:
-            acc_score = self.expScore(line)
-            
-            if acc_score > highest_score:
-                highest_score = acc_score
-        
-        deduced.sort(self.expScoreCmp)
-        deduced_reassambled = []
-        for d in deduced:
-            deduced_reassambled.append(self.reassambleStructure(d))
-        #print deduced_reassambled
-        
-        for line in deduced:
+        cluster_index = 0
+        for plan in deduced:
             dot += "  \n"
-            
-            dot += "  subgraph cluster_" + str(subgraphcounter) + " {\n"
-            dot += "    pencolor=transparent;\n"
-            dot += "    \n"
-            subgraphcounter = subgraphcounter + 1
-            
-            first = True
-            acc_score = 1.0
-            
-            for item in line:
-                instances = item["instances"]
-                node = item["node"]
-                rel_occ = item["rel-occ"]
-                
-                # Correct node label
-                if node[:21] == "REPLACEABLE-FUNCTION-":
-                    node = node[21:]
-                
-                acc_score = acc_score * rel_occ
-                
-                if not first:
-                    dot += "    node_" + str(counter - 1) + " -> node_" + str(counter) + "\n"
-                else:
-                    first = False
-                
-                dot += "    node_" + str(counter) + " [shape=box, label=\"" + node + " (" + str(round(rel_occ, 2)) + ", " + item["relation"] + ")\"]\n"
-                counter = counter + 1
-            
-            last_item = line[len(line) - 1]
-            
-            dot += "    ts_" + str(counter - 1) + " [shape=doublecircle, label=\"" + str(round(last_item["rel-term"], 2)) + "\"]\n"
-            dot += "    edge [style=dashed, arrowhead=normal, arrowtail=none, label=\"\"]\n"
-            dot += "    node_" + str(counter - 1) + " -> " + "ts_" + str(counter - 1) + "\n"
-            
-            acc_score = acc_score * last_item["rel-term"]
-            
-            dot += "    \n"
-            dot += "    label=\"Score: " + str(round(acc_score, 2)) + "\";\n"
-            dot += "    labeljust=center;\n"
-            dot += "    labelloc=top;\n"
+            dot += "  subgraph cluster_" + str(cluster_index) + " {\n"
+            dot += "    label=\"\";\n"
+            (cluster, something) = self.printDeducedPlan(plan, "    ");
+            dot += cluster
             dot += "  }\n"
             
+            cluster_index = cluster_index + 1
+        
         dot += "}\n"
         
         print dot
+        
+        
+        
+        # highest_score = 0
+        # for line in deduced:
+        #     acc_score = self.expScore(line)
+            
+        #     if acc_score > highest_score:
+        #         highest_score = acc_score
+        
+        # deduced.sort(self.expScoreCmp)
+        # deduced_reassambled = []
+        # for d in deduced:
+        #     deduced_reassambled.append(self.reassambleStructure(d))
+        # #print deduced_reassambled
+        
+        # for line in deduced:
+        #     dot += "  \n"
+            
+        #     dot += "  subgraph cluster_" + str(subgraphcounter) + " {\n"
+        #     dot += "    pencolor=transparent;\n"
+        #     dot += "    \n"
+        #     subgraphcounter = subgraphcounter + 1
+            
+        #     first = True
+        #     acc_score = 1.0
+            
+        #     for item in line:
+        #         instances = item["instances"]
+        #         node = item["node"]
+        #         rel_occ = item["rel-occ"]
+                
+        #         # Correct node label
+        #         if node[:21] == "REPLACEABLE-FUNCTION-":
+        #             node = node[21:]
+                
+        #         acc_score = acc_score * rel_occ
+                
+        #         if not first:
+        #             dot += "    node_" + str(counter - 1) + " -> node_" + str(counter) + "\n"
+        #         else:
+        #             first = False
+                
+        #         dot += "    node_" + str(counter) + " [shape=box, label=\"" + node + " (" + str(round(rel_occ, 2)) + ", " + item["relation"] + ")\"]\n"
+        #         counter = counter + 1
+            
+        #     last_item = line[len(line) - 1]
+            
+        #     dot += "    ts_" + str(counter - 1) + " [shape=doublecircle, label=\"" + str(round(last_item["rel-term"], 2)) + "\"]\n"
+        #     dot += "    edge [style=dashed, arrowhead=normal, arrowtail=none, label=\"\"]\n"
+        #     dot += "    node_" + str(counter - 1) + " -> " + "ts_" + str(counter - 1) + "\n"
+            
+        #     acc_score = acc_score * last_item["rel-term"]
+            
+        #     dot += "    \n"
+        #     dot += "    label=\"Score: " + str(round(acc_score, 2)) + "\";\n"
+        #     dot += "    labeljust=center;\n"
+        #     dot += "    labelloc=top;\n"
+        #     dot += "  }\n"
+            
+        # dot += "}\n"
+        
+        # print dot
