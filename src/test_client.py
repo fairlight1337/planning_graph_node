@@ -81,10 +81,10 @@ def test_requests():
     print TextFlags.MEH, "Running tests"
     
     request_pattern = "fetch-and-place ?object ?destination"
-    request_configurations = [{"?object": "spoon"},
-                              {"?object": "spoon", "?destination": "drawer"},
-                              {"?destination": "table"},
-                              {"?object": "cheese", "?destination": "closet"}]
+    request_configurations = [{"?object": "cheese"},
+                              #{"?object": "spoon", "?destination": "drawer"},
+                              #{"?destination": "table"},
+                              ]#{"?object": "cheese", "?destination": "closet"}]
     
     print TextFlags.MEH, " - Pattern to test for: '" + request_pattern + "'"
     print TextFlags.MEH, " -", len(request_configurations), "parameter configuration" + ("s" if len(request_configurations) != 1 else "")  + " to test" + (":" if len(request_configurations) > 0 else "")

@@ -207,62 +207,80 @@ def construct_steps(node, invocations, parent, parent_id, parent_invocation_spac
     step.parent = parent
     step.id = node["node"]
     
-    for parameter in node["call-pattern"]:
-        collected_values = []
-        valid_invocations = get_valid_invocations(node, str(parent_id), parent_invocation_space)
-        
-        for invocation in valid_invocations:
-            if str(step.id) in invocation:
-                parameters = invocation[str(step.id)]
-                if parameter in parameters:
-                    if not parameters[parameter] in collected_values:
-                        collected_values.append(parameters[parameter])
-        
-        for value in collected_values:
+    collected_values = {}
+    for parent_invocation in parent_invocation_space[str(parent_id)]:
+        for parameter in node["call-pattern"]:
+            valid_invocations = get_valid_invocations(node, str(parent_id), parent_invocation)
+            
+            for invocation in valid_invocations:
+                if str(step.id) in invocation:
+                    parameters = invocation[str(step.id)]
+                    if parameter in parameters:
+                        if not parameter in collected_values:
+                            collected_values[parameter] = []
+                        
+                        if not parameters[parameter] in collected_values[parameter]:
+                            collected_values[parameter].append(parameters[parameter])
+            
+    for parameter in collected_values:
+        for value in collected_values[parameter]:
             bdg = Binding()
             bdg.type = 0 # String
             bdg.key = parameter
             bdg.value = value
             
             step.bindings.append(bdg)
-    
+        
     steps.append(step)
     
     if "next-action" in node:
-        steps += construct_steps(node["next-action"], invocations, parent, str(node["node"]), accumulate_invocations(node))
+        steps += construct_steps(node["next-action"], invocations, parent, parent_id, parent_invocation_space)#str(node["node"]), accumulate_invocations(node))
     
     if "child" in node:
-        steps += construct_steps(node["child"], invocations, node["node"], str(node["node"]), accumulate_invocations(node))
+        steps += construct_steps(node["child"], invocations, node["node"], parent_id, parent_invocation_space)#str(node["node"]), accumulate_invocations(node))
     
     return steps
 
 
-def accumulate_invocations(dataset):
+def accumulate_invocations(invocations):
     acc = {}
-    id = str(dataset["node"])
     
-    for invocation in dataset["invocations"]:
-        for parameter in invocation[id]:
+    for invocation in invocations:
+        for parameter in invocation:
             if not parameter in acc:
                 acc[parameter] = []
             
-            acc[parameter].append(invocation[id][parameter])
+            if not invocation[parameter] in acc[parameter]:
+                acc[parameter].append(invocation[parameter])
     
     return acc
+
+
+# def accumulate_invocations(dataset):
+#     acc = {}
+#     id = str(dataset["node"])
+    
+#     for invocation in dataset["invocations"]:
+#         for parameter in invocation[id]:
+#             if not parameter in acc:
+#                 acc[parameter] = []
+            
+#             acc[parameter].append(invocation[id][parameter])
+    
+#     return acc
 
 
 def construct_plan(dataset, invocations):
     plan = Plan()
     
     plan.score = 0.0;
-    plan.steps = construct_steps(dataset, invocations, -1, dataset["node"], accumulate_invocations(dataset))
+    plan.steps = construct_steps(dataset, invocations, -1, dataset["node"], accumulate_invocations(invocations))#dataset))
     
     return plan
 
 
 def construct_plans(datasets, configuration):
     plans = []
-    invocable_datasets = {}
     
     for dataset in datasets:
         valid_invocations = get_valid_invocations(dataset, str(dataset["node"]), configuration)
@@ -300,7 +318,22 @@ def get_valid_invocations(dataset, parent_id, configuration):
                     break
             
             if valid:
-                valid_invocations.append(invocation)
+                already_present = False
+                
+                for v_inv in valid_invocations:
+                    all_in = True
+                    
+                    for parameter in v_inv[parent_id]:
+                        if invocation[parent_id][parameter] != v_inv[parent_id][parameter]:
+                            all_in = False
+                            break
+                    
+                    if all_in:
+                        already_present = True
+                        break
+                
+                if not already_present:
+                    valid_invocations.append(invocation)
     
     return valid_invocations
 
