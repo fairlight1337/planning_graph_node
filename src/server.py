@@ -233,13 +233,21 @@ def construct_steps(node, invocations, parent, parent_id, invocation_space):
         
     steps.append(step)
     
+    duration = node["duration-confidence"]
+    next_duration = [0, 0]
+    
     if "next-action" in node:
-        steps += construct_steps(node["next-action"], invocations, parent, parent_id, invocation_space)#str(node["node"]), accumulate_invocations(node))
+        (steps_new, next_duration) = construct_steps(node["next-action"], invocations, parent, parent_id, invocation_space)
+        steps += steps_new
     
     if "child" in node:
-        steps += construct_steps(node["child"], invocations, node["node"], parent_id, invocation_space)#str(node["node"]), accumulate_invocations(node))
+        (steps_new, duration) = construct_steps(node["child"], invocations, node["node"], parent_id, invocation_space)
+        steps += steps_new
     
-    return steps
+    duration[0] += next_duration[0]
+    duration[1] += next_duration[1]
+    
+    return (steps, duration)
 
 
 def accumulate_invocations(invocations):
@@ -259,8 +267,15 @@ def accumulate_invocations(invocations):
 def construct_plan(dataset, invocations, invocation_space):
     plan = Plan()
     
-    plan.score = 0.0;
-    plan.steps = construct_steps(dataset, invocations, -1, dataset["node"], invocation_space)
+    (steps, duration) = construct_steps(dataset, invocations, -1, dataset["node"], invocation_space)
+    plan.steps = steps
+    
+    # The score is based on an `optimistic shortest projected time`
+    # metric. It uses the lowest overall projected necessary time
+    # (taking confidence intervals into account) for all (leaf) tasks
+    # involved. The pessimistic version would use the upper boundary
+    # of the confidence interval rather than the lower one.
+    plan.score = 1.0 / duration[0]
     
     return plan
 
@@ -389,7 +404,7 @@ def plan_replies(pattern, bindings):
         plans = evaluate_resolved_pattern(pattern, configuration)
         res.plans += plans
     
-    print TextFlags.SAD, "No scoring for plans for now, sorry. Defaulting to '0.0' for all of them."
+    print TextFlags.MEH, "Using 'optimistic shortest projected time' metric for plan scoring."
     print TextFlags.HAPPY, "Returning " + str(len(res.plans)) + " plan" + ("s" if len(res.plans) != 1 else "")
     
     return res

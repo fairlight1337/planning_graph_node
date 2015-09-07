@@ -635,8 +635,11 @@ class MemoryCondenser:
         if not node["uid"] in trace:
             ci_n = len(node["durations"])
             ci_N = len(self.taskDurations[ctx])
-            ci_alpha = 0.05
+            
+            # https://www.stat.tamu.edu/~lzhou/stat302/standardnormaltable.pdf
+            ci_alpha = 0.05 # Not really used, more for reference
             ci_z = 1.96 # From standard distribution table for alpha = 0.5 (z_{1-alpha/2})
+            
             ci_x_bar = sum(node["durations"]) / float(ci_n)
             ci_s_square = 0
             for i in range(ci_n):
