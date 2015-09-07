@@ -43,15 +43,10 @@ import rospy
 from planning_msgs.srv import *
 from planning_msgs.msg import *
 
+from OutputPerks import *
+
 
 loaded_datasets = []
-
-
-class TextFlags:
-    HAPPY = '\033[1;92m[ :) ]\033[0;97m'
-    MEH = '\033[1;93m[ :| ]\033[0;97m'
-    SAD = '\033[1;91m[ :( ]\033[0;97m'
-    AWESOME = '\033[1;94m[ :D ]\033[0;97m'
 
 
 def transform_invocations(node):

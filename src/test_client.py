@@ -41,12 +41,7 @@ from planning_msgs.srv import *
 from planning_msgs.msg import *
 
 
-class TextFlags:
-    HAPPY = '\033[1;92m[ :) ]\033[0;97m'
-    MEH = '\033[1;93m[ :| ]\033[0;97m'
-    SAD = '\033[1;91m[ :( ]\033[0;97m'
-    AWESOME = '\033[1;94m[ :D ]\033[0;97m'
-    HUH = '\033[1;95m[ :/ ]\033[0;97m'
+from OutputPerks import *
 
 
 def get_plans(pattern, configuration):
