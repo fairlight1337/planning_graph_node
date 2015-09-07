@@ -412,6 +412,7 @@ class MemoryCondenser:
                "optional": "false",
                "instances": 0,
                "durations": [],
+               "outcomes": {},
                "invocations": [invocation_path],
                "call-pattern": call_pattern}
         self.uid_counter = self.uid_counter + 1
@@ -437,6 +438,19 @@ class MemoryCondenser:
             
             frame[ctx]["instances"] += 1
             frame[ctx]["durations"].append(self.tti[node].time())
+            
+            failures = self.tti[node].failures()
+            outcome = ""
+            
+            if len(failures) > 0:
+                outcome = self.tti[failures[0]].tagNodeValues("rdfs:label")[0].split(":")[1]
+            else:
+                outcome = "SUCCESS"
+            
+            if not outcome in frame[ctx]["outcomes"]:
+                frame[ctx]["outcomes"][outcome] = 0
+            
+            frame[ctx]["outcomes"][outcome] += 1
             
             if previous_ctx:
                 if not ctx in frame[previous_ctx]["next-actions"]:
@@ -658,6 +672,7 @@ class MemoryCondenser:
             node_desc = {"node": node["uid"],
                          "name": ctx,
                          "durations": node["durations"],
+                         "outcomes": node["outcomes"],
                          "optional": node["optional"],
                          "duration-confidence": ci,
                          "invocations": [],
