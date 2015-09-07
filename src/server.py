@@ -198,7 +198,7 @@ def param_prolog_to_exp(param):
     return param[1:].upper()
 
 
-def construct_steps(node, invocations, parent, parent_id, parent_invocation_space):
+def construct_steps(node, invocations, parent, parent_id, invocation_space):
     step = Step()
     steps = []
     
@@ -208,20 +208,20 @@ def construct_steps(node, invocations, parent, parent_id, parent_invocation_spac
     step.id = node["node"]
     
     collected_values = {}
-    for parent_invocation in parent_invocation_space[str(parent_id)]:
-        for parameter in node["call-pattern"]:
-            valid_invocations = get_valid_invocations(node, str(parent_id), parent_invocation)
-            
-            for invocation in valid_invocations:
-                if str(step.id) in invocation:
-                    parameters = invocation[str(step.id)]
-                    if parameter in parameters:
-                        if not parameter in collected_values:
-                            collected_values[parameter] = []
-                        
-                        if not parameters[parameter] in collected_values[parameter]:
-                            collected_values[parameter].append(parameters[parameter])
-            
+    for parameter in node["call-pattern"]:
+        step.call_pattern.append(parameter)
+        valid_invocations = get_valid_invocations(node, str(parent_id), invocation_space)
+        
+        for invocation in valid_invocations:
+            if str(step.id) in invocation:
+                parameters = invocation[str(step.id)]
+                if parameter in parameters:
+                    if not parameter in collected_values:
+                        collected_values[parameter] = []
+                    
+                    if not parameters[parameter] in collected_values[parameter]:
+                        collected_values[parameter].append(parameters[parameter])
+    
     for parameter in collected_values:
         for value in collected_values[parameter]:
             bdg = Binding()
@@ -234,10 +234,10 @@ def construct_steps(node, invocations, parent, parent_id, parent_invocation_spac
     steps.append(step)
     
     if "next-action" in node:
-        steps += construct_steps(node["next-action"], invocations, parent, parent_id, parent_invocation_space)#str(node["node"]), accumulate_invocations(node))
+        steps += construct_steps(node["next-action"], invocations, parent, parent_id, invocation_space)#str(node["node"]), accumulate_invocations(node))
     
     if "child" in node:
-        steps += construct_steps(node["child"], invocations, node["node"], parent_id, parent_invocation_space)#str(node["node"]), accumulate_invocations(node))
+        steps += construct_steps(node["child"], invocations, node["node"], parent_id, invocation_space)#str(node["node"]), accumulate_invocations(node))
     
     return steps
 
@@ -256,25 +256,11 @@ def accumulate_invocations(invocations):
     return acc
 
 
-# def accumulate_invocations(dataset):
-#     acc = {}
-#     id = str(dataset["node"])
-    
-#     for invocation in dataset["invocations"]:
-#         for parameter in invocation[id]:
-#             if not parameter in acc:
-#                 acc[parameter] = []
-            
-#             acc[parameter].append(invocation[id][parameter])
-    
-#     return acc
-
-
-def construct_plan(dataset, invocations):
+def construct_plan(dataset, invocations, invocation_space):
     plan = Plan()
     
     plan.score = 0.0;
-    plan.steps = construct_steps(dataset, invocations, -1, dataset["node"], accumulate_invocations(invocations))#dataset))
+    plan.steps = construct_steps(dataset, invocations, -1, dataset["node"], invocation_space)
     
     return plan
 
@@ -286,7 +272,10 @@ def construct_plans(datasets, configuration):
         valid_invocations = get_valid_invocations(dataset, str(dataset["node"]), configuration)
         
         if len(valid_invocations) > 0:
-            plans.append(construct_plan(dataset, valid_invocations))
+            parent_invocation_space = accumulate_invocations(valid_invocations)
+            
+            for parent_invocation in parent_invocation_space[str(dataset["node"])]:
+                plans.append(construct_plan(dataset, valid_invocations, parent_invocation))
     
     finished_plans = []
     
