@@ -393,6 +393,7 @@ class MemoryCondenser:
                "start-state": "false",
                "optional": "false",
                "instances": 0,
+               "durations": [],
                "invocations": [invocation_path],
                "call-pattern": call_pattern}
         self.uid_counter = self.uid_counter + 1
@@ -417,6 +418,7 @@ class MemoryCondenser:
                     frame[ctx]["start-state"] = "true"
             
             frame[ctx]["instances"] += 1
+            frame[ctx]["durations"].append(self.tti[node].time())
             
             if previous_ctx:
                 if not ctx in frame[previous_ctx]["next-actions"]:
@@ -611,6 +613,7 @@ class MemoryCondenser:
         if not node["uid"] in trace:
             node_desc = {"node": node["uid"],
                          "name": ctx,
+                         "durations": node["durations"],
                          "optional": node["optional"],
                          "invocations": [],
                          "instances": node["instances"],
