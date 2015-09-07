@@ -43,7 +43,7 @@ import rospy
 from planning_msgs.srv import *
 from planning_msgs.msg import *
 
-from OutputPerks import *
+from protoexp.OutputPerks import *
 
 
 loaded_datasets = []
