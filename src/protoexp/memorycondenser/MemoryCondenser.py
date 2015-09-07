@@ -636,7 +636,7 @@ class MemoryCondenser:
             ci_n = len(node["durations"])
             ci_N = len(self.taskDurations[ctx])
             ci_alpha = 0.05
-            ci_z = 1.65
+            ci_z = 1.96 # From standard distribution table for alpha = 0.5 (z_{1-alpha/2})
             ci_x_bar = sum(node["durations"]) / float(ci_n)
             ci_s_square = 0
             for i in range(ci_n):
