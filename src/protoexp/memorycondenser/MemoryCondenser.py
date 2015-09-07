@@ -3,6 +3,7 @@
 import sys
 import json
 import copy
+import math
 
 from OwlReader import OwlReader
 from DesignatorReader import DesignatorReader
@@ -15,6 +16,8 @@ class MemoryCondenser:
         self.rdrDesig = DesignatorReader()
         
         self.arrExperiences = []
+        
+        self.knownTaskTypes = []
     
     def countExperiences(self):
         return len(self.arrExperiences)
@@ -31,6 +34,17 @@ class MemoryCondenser:
             logReturn.setDesignatorData(self.rdrDesig.loadDesignators(strDesignatorFile))
         
         self.addExperience(logReturn)
+    
+    def durations_for_task_type(self, data, task_type):
+        collected_durations = []
+        
+        for key in data:
+            if key == task_type:
+                collected_durations += data[key]["durations"]
+            
+            collected_durations += self.durations_for_task_type(data[key]["children"], task_type)
+        
+        return collected_durations
     
     def condenseData(self, dataOwl):
         result = None
@@ -365,6 +379,10 @@ class MemoryCondenser:
             for node in metaData.subActions():
                 self.checkForOptionalInjectedNodes(self.tti[node].taskContext(), self.arrInjected)
         
+        self.taskDurations = {}
+        for task_type in self.knownTaskTypes:
+            self.taskDurations[task_type] = self.durations_for_task_type(self.arrInjected, task_type)
+        
         if deduced:
             self.printDeduced(dot = not data, root_action_count = root_action_count)
         else:
@@ -429,6 +447,9 @@ class MemoryCondenser:
     def injectExperienceNode(self, node, frame, rootlevel = False, invocation_path = {}, previous_node = None):
         ctx = self.tti[node].taskContext()
         new_invocation_path = invocation_path.copy()
+        
+        if not ctx in self.knownTaskTypes:
+            self.knownTaskTypes.append(ctx)
         
         self.updateFrameContext(node, frame, new_invocation_path, self.tti[previous_node].taskContext() if previous_node else None)
         num_children = len(frame[ctx]["children"])
@@ -507,6 +528,7 @@ class MemoryCondenser:
         
         fixed_deduced = []
         for d in deduced:
+            # Go down two levels
             fixed_singular = d["child"]["child"]
             
             for invocation in fixed_singular["invocations"]:
@@ -611,10 +633,30 @@ class MemoryCondenser:
         
         node = nodes[ctx]
         if not node["uid"] in trace:
+            ci_n = len(node["durations"])
+            ci_N = len(self.taskDurations[ctx])
+            ci_alpha = 0.05
+            ci_z = 1.65
+            ci_x_bar = sum(node["durations"]) / float(ci_n)
+            ci_s_square = 0
+            for i in range(ci_n):
+                ci_s_square += (node["durations"][i] - ci_x_bar) * (node["durations"][i] - ci_x_bar)
+            
+            ci_s_square /= (ci_n - 1)
+            ci_sigma_hat_x_bar_pre = (ci_s_square / ci_n) * (1 - ci_n / ci_N)
+            
+            if abs(ci_sigma_hat_x_bar_pre) > 0:
+                ci_sigma_hat_x_bar = math.sqrt(ci_sigma_hat_x_bar_pre)
+            else:
+                ci_sigma_hat_x_bar = 0
+            
+            ci = [ci_x_bar - ci_z * ci_sigma_hat_x_bar, ci_x_bar + ci_z * ci_sigma_hat_x_bar]
+            
             node_desc = {"node": node["uid"],
                          "name": ctx,
                          "durations": node["durations"],
                          "optional": node["optional"],
+                         "duration-confidence": ci,
                          "invocations": [],
                          "instances": node["instances"],
                          "call-pattern": node["call-pattern"],
