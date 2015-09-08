@@ -46,6 +46,13 @@ from planning_msgs.msg import *
 from protoexp.OutputPerks import *
 
 
+class ScoringMethod:
+    Undefined = "undefined"
+    OSPT = "optimistic shortest projected time"
+    PSPT = "pessismistic shortest projected time"
+    LPFO = "least projected failure occurrences"
+
+
 loaded_datasets = []
 
 
@@ -74,8 +81,9 @@ def transform_callpattern(node):
     call_pattern_split = node["call-pattern"].split(" ")
     call_pattern_fixed = []
     
-    for parameter in call_pattern_split:
-        call_pattern_fixed.append(param_exp_to_prolog(parameter))
+    if node["call-pattern"] != "":
+        for parameter in call_pattern_split:
+            call_pattern_fixed.append(param_exp_to_prolog(parameter))
     
     node["call-pattern"] = call_pattern_fixed
     
@@ -235,19 +243,20 @@ def construct_steps(node, invocations, parent, parent_id, invocation_space):
     
     duration = node["duration-confidence"]
     next_duration = [0, 0]
+    failures = []
     
     if "next-action" in node:
-        (steps_new, next_duration) = construct_steps(node["next-action"], invocations, parent, parent_id, invocation_space)
+        (steps_new, next_duration, next_failures) = construct_steps(node["next-action"], invocations, parent, parent_id, invocation_space)
         steps += steps_new
     
     if "child" in node:
-        (steps_new, duration) = construct_steps(node["child"], invocations, node["node"], parent_id, invocation_space)
+        (steps_new, duration, child_failures) = construct_steps(node["child"], invocations, node["node"], parent_id, invocation_space)
         steps += steps_new
     
     duration[0] += next_duration[0]
     duration[1] += next_duration[1]
     
-    return (steps, duration)
+    return (steps, duration, failures)
 
 
 def accumulate_invocations(invocations):
@@ -264,23 +273,27 @@ def accumulate_invocations(invocations):
     return acc
 
 
-def construct_plan(dataset, invocations, invocation_space):
+def construct_plan(dataset, invocations, invocation_space, scoring_methods):
     plan = Plan()
     
-    (steps, duration) = construct_steps(dataset, invocations, -1, dataset["node"], invocation_space)
+    (steps, duration, failures) = construct_steps(dataset, invocations, -1, dataset["node"], invocation_space)
     plan.steps = steps
+    plan.score = 1.0
     
-    # The score is based on an `optimistic shortest projected time`
-    # metric. It uses the lowest overall projected necessary time
-    # (taking confidence intervals into account) for all (leaf) tasks
-    # involved. The pessimistic version would use the upper boundary
-    # of the confidence interval rather than the lower one.
-    plan.score = 1.0 / duration[0]
+    for scoring_method in scoring_methods:
+        if scoring_method == ScoringMethod.OSPT: # optimistic shortest projected time
+            result = 1.0 / duration[0]
+        elif scoring_method == ScoringMethod.PSPT: # pessimistic shortest projected time
+            result = 1.0 / duration[1]
+        elif scoring_method == ScoringMethod.LPFO: # least projected failure occurrences
+            result = 1.0 / (len(failures) + 1)
+        
+        plan.score *= result
     
     return plan
 
 
-def construct_plans(datasets, configuration):
+def construct_plans(datasets, configuration, scoring_methods):
     plans = []
     
     for dataset in datasets:
@@ -290,7 +303,7 @@ def construct_plans(datasets, configuration):
             parent_invocation_space = accumulate_invocations(valid_invocations)
             
             for parent_invocation in parent_invocation_space[str(dataset["node"])]:
-                plans.append(construct_plan(dataset, valid_invocations, parent_invocation))
+                plans.append(construct_plan(dataset, valid_invocations, parent_invocation, scoring_methods))
     
     finished_plans = []
     
@@ -298,7 +311,7 @@ def construct_plans(datasets, configuration):
         plan_ok = True
         
         for step in plan.steps:
-            if len(step.bindings) == 0:
+            if len(step.bindings) != len(step.call_pattern):
                 plan_ok = False
                 break
         
@@ -342,7 +355,7 @@ def get_valid_invocations(dataset, parent_id, configuration):
     return valid_invocations
 
 
-def evaluate_resolved_pattern(pattern, configuration):
+def evaluate_resolved_pattern(pattern, configuration, scoring_methods):
     global loaded_datasets
     
     datasets = []
@@ -388,12 +401,12 @@ def evaluate_resolved_pattern(pattern, configuration):
         
         print TextFlags.HAPPY, "- " + parameter + " = " + values
     
-    returned_plans = construct_plans(datasets, configuration)
+    returned_plans = construct_plans(datasets, configuration, scoring_methods)
     
     return returned_plans
 
 
-def plan_replies(pattern, bindings):
+def plan_replies(pattern, bindings, scoring_methods):
     res = PlanningResponse()
     
     bindings = unify_bindings(bindings)
@@ -401,16 +414,33 @@ def plan_replies(pattern, bindings):
     res.unused_bindings = unused_bindings
     
     for configuration in configurations:
-        plans = evaluate_resolved_pattern(pattern, configuration)
+        plans = evaluate_resolved_pattern(pattern, configuration, scoring_methods)
         res.plans += plans
     
-    print TextFlags.MEH, "Using 'optimistic shortest projected time' metric for plan scoring."
+    print TextFlags.MEH, "Metrics used for plan scoring:"
+    for scoring_method in scoring_methods:
+        print TextFlags.MEH, "-", scoring_method
+    
     print TextFlags.HAPPY, "Returning " + str(len(res.plans)) + " plan" + ("s" if len(res.plans) != 1 else "")
     
     return res
 
 
 def handle_planning_request(req):
+    scoring_methods = []
+    
+    for method in req.scoring_methods:
+        if method == "ospt":
+            scoring_methods.append(ScoringMethod.OSPT)
+        elif method == "pspt":
+            scoring_methods.append(ScoringMethod.PSPT)
+        elif method == "lpfo":
+            scoring_methods.append(ScoringMethod.LPFO)
+    
+    if len(scoring_methods) == 0:
+        print TextFlags.MEH, "No scoring method specified. Assuming 'OSPT+LPFO' as default."
+        scoring_methods = [ScoringMethod.OSPT, ScoringMethod.LPFO]
+    
     if req.pattern != "":
         print TextFlags.MEH, "Planning for pattern '" + req.pattern + "'"
         bindings_clean = []
@@ -425,7 +455,7 @@ def handle_planning_request(req):
         else:
             print TextFlags.SAD, "No (non-empty) bindings defined, resolving all possible solutions."
         
-        return plan_replies(req.pattern, bindings_clean)
+        return plan_replies(req.pattern, bindings_clean, scoring_methods)
     else:
         print TextFlags.SAD, "Empty pattern, returning zero reply (aka no plans inside)."
         return PlanningResponse()
