@@ -206,7 +206,7 @@ def param_prolog_to_exp(param):
     return param[1:].upper()
 
 
-def construct_steps(node, invocations, parent, parent_id, invocation_space):
+def construct_steps(node, invocations, parent, parent_id, invocation_space, scoring_methods):
     step = Step()
     steps = []
     
@@ -238,23 +238,29 @@ def construct_steps(node, invocations, parent, parent_id, invocation_space):
             bdg.value = value
             
             step.bindings.append(bdg)
-        
-    steps.append(step)
     
     duration = node["duration-confidence"]
     next_duration = [0, 0]
     failures = []
+    steps_next = []
+    steps_child = []
     
     if "next-action" in node:
-        (steps_new, next_duration, next_failures) = construct_steps(node["next-action"], invocations, parent, parent_id, invocation_space)
-        steps += steps_new
+        (steps_next, next_duration, next_failures) = construct_steps(node["next-action"], invocations, parent, parent_id, invocation_space, scoring_methods)
+        failures += next_failures
     
     if "child" in node:
-        (steps_new, duration, child_failures) = construct_steps(node["child"], invocations, node["node"], parent_id, invocation_space)
-        steps += steps_new
+        (steps_child, duration, child_failures) = construct_steps(node["child"], invocations, node["node"], parent_id, invocation_space, scoring_methods)
+        failures += child_failures
     
     duration[0] += next_duration[0]
     duration[1] += next_duration[1]
+    
+    step.score = step_score(duration, failures, scoring_methods)
+    
+    steps.append(step)
+    steps += steps_next
+    steps += steps_child
     
     return (steps, duration, failures)
 
@@ -273,22 +279,30 @@ def accumulate_invocations(invocations):
     return acc
 
 
-def construct_plan(dataset, invocations, invocation_space, scoring_methods):
-    plan = Plan()
-    
-    (steps, duration, failures) = construct_steps(dataset, invocations, -1, dataset["node"], invocation_space)
-    plan.steps = steps
-    plan.score = 1.0
+def step_score(duration_interval, failures, scoring_methods):
+    score = 1.0
     
     for scoring_method in scoring_methods:
+        result = 1.0
+        
         if scoring_method == ScoringMethod.OSPT: # optimistic shortest projected time
-            result = 1.0 / duration[0]
+            result = 1.0 / duration_interval[0]
         elif scoring_method == ScoringMethod.PSPT: # pessimistic shortest projected time
-            result = 1.0 / duration[1]
+            result = 1.0 / duration_interval[1]
         elif scoring_method == ScoringMethod.LPFO: # least projected failure occurrences
             result = 1.0 / (len(failures) + 1)
         
-        plan.score *= result
+        score *= result
+    
+    return score
+
+
+def construct_plan(dataset, invocations, invocation_space, scoring_methods):
+    plan = Plan()
+    
+    (steps, duration_interval, failures) = construct_steps(dataset, invocations, -1, dataset["node"], invocation_space, scoring_methods)
+    plan.steps = steps
+    plan.score = step_score(duration_interval, failures, scoring_methods)
     
     return plan
 
