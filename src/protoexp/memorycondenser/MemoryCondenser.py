@@ -659,7 +659,9 @@ class MemoryCondenser:
             for i in range(ci_n):
                 ci_s_square += (node["durations"][i] - ci_x_bar) * (node["durations"][i] - ci_x_bar)
             
-            ci_s_square /= (ci_n - 1)
+            if ci_n != 1:
+                ci_s_square /= (ci_n - 1)
+            
             ci_sigma_hat_x_bar_pre = (ci_s_square / ci_n) * (1 - ci_n / ci_N)
             
             if abs(ci_sigma_hat_x_bar_pre) > 0:

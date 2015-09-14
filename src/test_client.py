@@ -81,7 +81,7 @@ def test_requests():
     print TextFlags.MEH, "Running tests"
     
     request_pattern = "fetch-and-place ?object ?destination"
-    request_configurations = [{"?object": "spoon"},
+    request_configurations = [{"?object": "spoon", "?destination": "fridge"},
                               #{"?object": "spoon", "?destination": "drawer"},
                               #{"?destination": "table"},
                               ]#{"?object": "cheese", "?destination": "closet"}]
