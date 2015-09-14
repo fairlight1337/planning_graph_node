@@ -427,6 +427,9 @@ def plan_replies(pattern, bindings, scoring_methods):
     (configurations, unused_bindings) = resolve_patterns(pattern, bindings)
     res.unused_bindings = unused_bindings
     
+    if len(configurations) == 0:
+        configurations.append({})
+    
     for configuration in configurations:
         plans = evaluate_resolved_pattern(pattern, configuration, scoring_methods)
         res.plans += plans
