@@ -106,11 +106,13 @@ def expand_tree(tree):
 
 
 def print_tree(tree, indentation = ""):
-    pattern = tree["step"].pattern
-    for cb in tree["step"].call_pattern:
+    step = tree["step"]
+    pattern = step.pattern
+    
+    for cb in step.call_pattern:
         bdg = None
         
-        for binding in tree["step"].bindings:
+        for binding in step.bindings:
             if binding.key == cb:
                 bdg = binding
                 break
@@ -121,6 +123,7 @@ def print_tree(tree, indentation = ""):
             pattern += ", unbound " + cb
     
     print TextFlags.MEH, indentation + " -", pattern
+    print TextFlags.MEH, indentation + "   Score = " + str(round(step.score, 5)) + ", Duration = [" + str(round(step.duration[0], 3)) + ", " + str(round(step.duration[1], 3)) + "]"
     
     for child in tree["children"]:
         print_tree(child, indentation + "  ")
@@ -128,19 +131,9 @@ def print_tree(tree, indentation = ""):
 
 def print_plans(plans):
     for plan in plans:
-        print TextFlags.HAPPY, "Plan Score =", plan.score
+        print TextFlags.HAPPY, "Plan Score =", str(round(plan.score, 5)) + ", Duration = [" + str(round(plan.duration[0], 3)) + ", " + str(round(plan.duration[1], 3)) + "]"
         
         print_tree(reconstruct_order(plan.steps))
-        # for step in :
-        #     pattern = step.pattern
-        #     call = step.call_pattern
-            
-        #     for cp in step.call_pattern:
-        #         for binding in step.bindings:
-        #             if binding.key == cp:
-        #                 pattern += " " + binding.value
-            
-        #     print TextFlags.HAPPY, " -", step.type, "'" + pattern + "'"
 
 
 def get_prompt_input(prompt):
