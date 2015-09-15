@@ -240,7 +240,7 @@ def construct_steps(node, invocations, parent, parent_id, invocation_space, scor
             
             step.bindings.append(bdg)
     
-    duration = node["duration-confidence"]
+    duration = copy.deepcopy(node["duration-confidence"])
     next_duration = [0, 0]
     failures = []
     steps_next = []
@@ -336,6 +336,15 @@ def construct_plans(datasets, configuration, scoring_methods):
             finished_plans.append(plan)
     
     return finished_plans
+
+
+def cmp_plan_scores(plan_a, plan_b):
+    if plan_a.score > plan_b.score:
+        return 1
+    elif plan_a.score < plan_b.score:
+        return -1
+    else:
+        return 0
 
 
 def get_valid_invocations(dataset, parent_id, configuration):
@@ -436,6 +445,8 @@ def plan_replies(pattern, bindings, scoring_methods):
     for configuration in configurations:
         plans = evaluate_resolved_pattern(pattern, configuration, scoring_methods)
         res.plans += plans
+    
+    res.plans.sort(cmp_plan_scores)
     
     print TextFlags.MEH, "Metrics used for plan scoring:"
     for scoring_method in scoring_methods:

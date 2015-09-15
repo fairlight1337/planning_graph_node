@@ -657,6 +657,8 @@ class MemoryCondenser:
             
             if ci_n != 1:
                 ci_s_square /= (ci_n - 1)
+            else:
+                ci_s_square /= ci_n # Foo foo
             
             ci_sigma_hat_x_bar_pre = (ci_s_square / ci_n) * (1 - ci_n / ci_N)
             
