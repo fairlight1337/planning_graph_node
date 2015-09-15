@@ -215,16 +215,18 @@ class MemoryCondenser:
         dot += "}\n"
         
         for subnode in tti.subActions():
-            dot += "  " + subnode + " [shape=box, label=\"" + self.t_tti[subnode].taskContext() + "\"]\n"
-            #dot += "  edge ";
+            param_line = ""
+            for param in self.t_tti[subnode].annotatedParameters():
+                if param != "_time_created" and param != "CALLPATTERN":
+                    value = self.t_tti[subnode].tagNodeValues("knowrob:" + param)[0]
+                    param_line += param + " = " + value + "\n"
+            
+            dot += "  " + subnode + " [shape=box, label=\"" + self.t_tti[subnode].taskContext() + " (" + str(round(self.t_tti[subnode].time(), 3)) + "s)\n" + param_line + "\"]\n"
             
             if first == True:
                 first = False
                 dot += "edge [dir=both, arrowhead=normal, arrowtail=none]"
                 dot += "\n  " + node + " -> " + subnode + "\n"
-            else:
-                pass#dot += "[dir=both, arrowhead=diamond, arrowtail=ediamond]"
-            
             
             if not former_subnode == "":
                 dot += "  edge [arrowhead=empty, arrowtail=none]\n"
@@ -233,12 +235,6 @@ class MemoryCondenser:
             dot += self.dotNode(subnode, True)
             
             former_subnode = subnode
-        
-        if len(tti.subActions()) == 0 and tti.nextAction() == None:
-            #dot += "  terminal_state_" + node + " [shape=doublecircle, label=\"\"]\n"
-            #dot += "  edge [arrowhead=empty, arrowtail=none]\n"
-            #dot += "  " + node + " -> terminal_state_" + node + "\n"
-            pass
         
         return dot
     
@@ -969,7 +965,7 @@ class MemoryCondenser:
         this_node = "node_" + str(self.node_counter)
         name = (plan["name"][21:] if plan["name"][:21] == "REPLACEABLE-FUNCTION-" else plan["name"]).lower()
         
-        line_name = name + " (ID " + str(plan["node"]) + "" + (", theoretical" if plan["theoretical"] == "true" else "") + ")"
+        line_name = name + " (ID " + str(plan["node"]) + "" + (", theoretical" if plan["theoretical"] == "true" else "") + "), "
         line_call_pattern = plan["call-pattern"]
         line_invocations = str(len(plan["invocations"])) + " invocation" + ("" if len(plan["invocations"]) == 1 else "s")
         
