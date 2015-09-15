@@ -38,6 +38,7 @@
 import os
 import sys
 import json
+import copy
 import rospy
 
 from planning_msgs.srv import *
@@ -257,6 +258,7 @@ def construct_steps(node, invocations, parent, parent_id, invocation_space, scor
     duration[1] += next_duration[1]
     
     step.score = step_score(duration, failures, scoring_methods)
+    step.duration = duration
     
     steps.append(step)
     steps += steps_next
@@ -303,6 +305,7 @@ def construct_plan(dataset, invocations, invocation_space, scoring_methods):
     (steps, duration_interval, failures) = construct_steps(dataset, invocations, -1, dataset["node"], invocation_space, scoring_methods)
     plan.steps = steps
     plan.score = step_score(duration_interval, failures, scoring_methods)
+    plan.duration = duration_interval
     
     return plan
 
@@ -378,7 +381,7 @@ def evaluate_resolved_pattern(pattern, configuration, scoring_methods):
     # Filter for fitting datasets
     for dataset in loaded_datasets:
         if dataset["name"] == pattern_split[0] and len(dataset["call-pattern"]) == len(pattern_split) - 1:
-            datasets.append(dataset)
+            datasets.append(copy.deepcopy(dataset))
     
     print TextFlags.MEH, len(datasets), "structurally fitting datasets found for '" + pattern_split[0] + "' (" + str(len(pattern_split) - 1) + " parameter" + ("s" if len(pattern_split) - 1 != 1 else "") + ")"
     
